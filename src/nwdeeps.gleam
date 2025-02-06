@@ -23,7 +23,7 @@ pub fn main() {
   io.println("==nwdeeps==")
   let log_file =
     "/home/bgw/.var/app/com.valvesoftware.Steam/.local/share/Steam/steamapps/compatdata/704450/pfx/drive_c/users/steamuser/Documents/Neverwinter Nights/logs/nwclientLog1.txt"
-  //let log_file = "~/nwclientLog1.txt"
+  //let log_file = "nwclientLog1.txt"
 
   let assert Ok(subj) = meter.start()
   let assert Ok(Nil) = tail.start(subj, log_file)

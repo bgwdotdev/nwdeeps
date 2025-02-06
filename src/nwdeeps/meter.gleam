@@ -1,15 +1,18 @@
 import gleam/dict.{type Dict}
+import gleam/float
 import gleam/int
 import gleam/io
 import gleam/list
 import gleam/option.{type Option, None, Some}
 import gleam/otp/actor
+import gleam/time/duration
+import gleam/time/timestamp.{type Timestamp}
 import nwdeeps/error
 import nwdeeps/log
 
 pub opaque type Event {
   Log(log.Log)
-  Dps
+  PrintDps
 }
 
 pub fn new_log(event: log.Log) -> Event {
@@ -17,15 +20,26 @@ pub fn new_log(event: log.Log) -> Event {
 }
 
 pub fn print_dps() -> Event {
-  Dps
+  PrintDps
 }
 
 pub opaque type State {
-  State(current: List(log.Log), previous: Dict(String, List(log.Log)))
+  State(
+    current: List(log.Log),
+    previous: Dict(String, List(log.Log)),
+    round_start: Timestamp,
+    last_log: Timestamp,
+  )
 }
 
 pub fn start() {
-  let state = State(current: [], previous: dict.new())
+  let state =
+    State(
+      current: [],
+      previous: dict.new(),
+      round_start: timestamp.system_time(),
+      last_log: timestamp.system_time(),
+    )
   actor.start(state, loop)
 }
 
@@ -38,15 +52,22 @@ fn loop(msg: Event, state: State) -> actor.Next(Event, State) {
           State(
             current: [],
             previous: dict.insert(state.previous, time, state.current),
+            round_start: timestamp.system_time(),
+            last_log: timestamp.system_time(),
           )
         }
-        x -> State(..state, current: [x, ..state.current])
+        x ->
+          State(
+            ..state,
+            current: [x, ..state.current],
+            last_log: timestamp.system_time(),
+          )
       }
       actor.continue(state)
     }
-    Dps -> {
+    PrintDps -> {
       io.println("")
-      //clear_terminal()
+      clear_terminal()
       io.println("==dps==")
       fn(dps: dict.Dict(String, Int), log: log.Log) {
         case log {
@@ -62,12 +83,39 @@ fn loop(msg: Event, state: State) -> actor.Next(Event, State) {
       }
       |> list.fold(state.current, dict.new(), _)
       |> dict.to_list
-      |> list.sort(fn(a, b) { int.compare(a.1, b.1) })
+      |> list.map(to_dps(_, state))
+      |> list.sort(fn(a, b) { int.compare(a.dps, b.dps) })
       |> list.reverse
-      |> list.each(fn(i) { io.println(i.0 <> ": " <> int.to_string(i.1)) })
+      |> list.index_map(fn(dps, idx) {
+        io.println(
+          int.to_string(idx)
+          <> ". "
+          <> dps.source
+          <> ": "
+          <> int.to_string(dps.dps)
+          <> " ("
+          <> int.to_string(dps.damage)
+          <> ")",
+        )
+      })
+
+      timestamp.difference(state.round_start, state.last_log)
+      |> duration.to_seconds
       actor.continue(state)
     }
   }
+}
+
+type Dps {
+  Dps(source: String, dps: Int, damage: Int)
+}
+
+fn to_dps(i: #(String, Int), state: State) -> Dps {
+  let round_duration =
+    timestamp.difference(state.round_start, state.last_log)
+    |> duration.to_seconds
+  let dps = i.1 / float.truncate(round_duration)
+  Dps(source: i.0, dps:, damage: i.1)
 }
 
 @external(erlang, "nwdeeps_ffi", "clear_terminal")
