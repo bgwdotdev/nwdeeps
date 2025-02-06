@@ -1,37 +1,22 @@
-import gleam/bit_array
-import gleam/dict
-import gleam/erlang/process.{type Subject}
 import gleam/int
-import gleam/io
-import gleam/list
 import gleam/option.{type Option, None, Some}
 import gleam/regexp
 import gleam/result
-import gleam/string
 import nwdeeps/error
-import nwdeeps/meter
 import nwdeeps/parse
-import nwdeeps/tail
 
-fn print_dps(subj: Subject(meter.Event)) {
-  meter.print_dps() |> process.send(subj, _)
-  process.sleep(1000)
-  print_dps(subj)
+pub type Log {
+  Attack(time: String, source: String, target: String, hit: Bool, roll: String)
+  Damage(time: String, source: String, target: String, value: Int, roll: String)
+  Initiative(time: String, source: String, value: Int, roll: String)
 }
 
-pub fn main() {
-  io.println("==nwdeeps==")
-  let log_file =
-    "/home/bgw/.var/app/com.valvesoftware.Steam/.local/share/Steam/steamapps/compatdata/704450/pfx/drive_c/users/steamuser/Documents/Neverwinter Nights/logs/nwclientLog1.txt"
-  //let log_file = "~/nwclientLog1.txt"
-
-  let assert Ok(subj) = meter.start()
-  let assert Ok(Nil) = tail.start(subj, log_file)
-  process.start(print_dps(subj), True)
-  process.sleep_forever()
+pub fn parse(line: String) -> Option(Log) {
+  [parse.initiative(), parse.attack(), parse.damage()]
+  |> one_of(line)
 }
 
-fn one_of(regexs: List(parse.Parse), line: String) -> Option(Event) {
+fn one_of(regexs: List(parse.Parse), line: String) -> Option(Log) {
   case regexs {
     [] -> None
     [x, ..xs] ->
@@ -48,7 +33,7 @@ fn one_of(regexs: List(parse.Parse), line: String) -> Option(Event) {
 fn match_to_event(
   parse: parse.Event,
   match: regexp.Match,
-) -> Result(Event, error.Error) {
+) -> Result(Log, error.Error) {
   case parse {
     parse.Attack ->
       case match.submatches {
@@ -62,9 +47,7 @@ fn match_to_event(
         ] ->
           hit
           |> hit_to_bool
-          |> result.map(fn(hit) {
-            DoAttack(time:, source:, target:, hit:, roll:)
-          })
+          |> result.map(fn(hit) { Attack(time:, source:, target:, hit:, roll:) })
         x -> Error(error.RegexpScanToEvent(x))
       }
     parse.Damage ->
@@ -80,7 +63,7 @@ fn match_to_event(
           value
           |> int.parse
           |> result.map(fn(value) {
-            DoDamage(time:, source:, target:, value:, roll:)
+            Damage(time:, source:, target:, value:, roll:)
           })
           |> result.map_error(fn(_) { error.UnknownValueType(value) })
         x -> Error(error.RegexpScanToEvent(x))
@@ -90,9 +73,7 @@ fn match_to_event(
         [Some(_date), Some(time), Some(source), Some(value), Some(roll)] ->
           value
           |> int.parse
-          |> result.map(fn(value) {
-            DoInitiative(time:, source:, value:, roll:)
-          })
+          |> result.map(fn(value) { Initiative(time:, source:, value:, roll:) })
           |> result.map_error(fn(_) { error.UnknownValueType(value) })
         x -> Error(error.RegexpScanToEvent(x))
       }
@@ -107,27 +88,4 @@ fn hit_to_bool(hit: String) -> Result(Bool, error.Error) {
     "miss" -> Ok(False)
     x -> Error(error.UnknownHitType(x))
   }
-}
-
-//
-// Event
-//
-
-pub type Event {
-  Event
-  DoAttack(
-    time: String,
-    source: String,
-    target: String,
-    hit: Bool,
-    roll: String,
-  )
-  DoDamage(
-    time: String,
-    source: String,
-    target: String,
-    value: Int,
-    roll: String,
-  )
-  DoInitiative(time: String, source: String, value: Int, roll: String)
 }

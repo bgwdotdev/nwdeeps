@@ -1,10 +1,10 @@
 import gleam/regexp
 
 pub type Parse {
-  Parse(event: ParseEvent, regexp: regexp.Regexp)
+  Parse(event: Event, regexp: regexp.Regexp)
 }
 
-pub type ParseEvent {
+pub type Event {
   Initiative
   Attack
   AOO
