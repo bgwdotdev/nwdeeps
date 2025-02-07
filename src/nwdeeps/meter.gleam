@@ -5,6 +5,7 @@ import gleam/io
 import gleam/list
 import gleam/option.{type Option, None, Some}
 import gleam/otp/actor
+import gleam/string
 import gleam/time/duration
 import gleam/time/timestamp.{type Timestamp}
 import nwdeeps/error
@@ -69,35 +70,41 @@ fn loop(msg: Event, state: State) -> actor.Next(Event, State) {
       io.println("")
       clear_terminal()
       io.println("==dps==")
-      fn(dps: dict.Dict(String, Int), log: log.Log) {
-        case log {
-          log.Damage(_, source, _, value, _) ->
-            dict.upsert(dps, source, fn(v) {
-              case v {
-                Some(v) -> v + value
-                None -> value
-              }
-            })
-          _ -> dps
+      let meters =
+        fn(dps: dict.Dict(String, Int), log: log.Log) {
+          case log {
+            log.Damage(_, source, _, value, _) ->
+              dict.upsert(dps, source, fn(v) {
+                case v {
+                  Some(v) -> v + value
+                  None -> value
+                }
+              })
+            _ -> dps
+          }
         }
-      }
-      |> list.fold(state.current, dict.new(), _)
-      |> dict.to_list
-      |> list.map(to_dps(_, state))
-      |> list.sort(fn(a, b) { int.compare(a.dps, b.dps) })
-      |> list.reverse
-      |> list.index_map(fn(dps, idx) {
-        io.println(
-          int.to_string(idx)
-          <> ". "
-          <> dps.source
-          <> ": "
-          <> int.to_string(dps.dps)
-          <> " ("
-          <> int.to_string(dps.damage)
-          <> ")",
-        )
-      })
+        |> list.fold(state.current, dict.new(), _)
+        |> dict.to_list
+        |> list.map(to_dps(_, state))
+        |> list.sort(fn(a, b) { int.compare(a.dps, b.dps) })
+        |> list.reverse
+      let _ =
+        meters
+        |> list.index_map(fn(dps, idx) {
+          io.println(
+            int.to_string(idx)
+            <> ". "
+            <> dps.source
+            <> ": "
+            <> int.to_string(dps.dps)
+            <> " : "
+            <> int.to_string(dps.dpr)
+            <> " ("
+            <> int.to_string(dps.damage)
+            <> ")",
+          )
+        })
+      let _ = meters |> list.index_map(to_svg) |> print_svg |> io.debug
 
       timestamp.difference(state.round_start, state.last_log)
       |> duration.to_seconds
@@ -107,16 +114,64 @@ fn loop(msg: Event, state: State) -> actor.Next(Event, State) {
 }
 
 type Dps {
-  Dps(source: String, dps: Int, damage: Int)
+  Dps(source: String, dps: Int, dpr: Int, damage: Int)
 }
 
 fn to_dps(i: #(String, Int), state: State) -> Dps {
-  let round_duration =
+  let fight_duration =
     timestamp.difference(state.round_start, state.last_log)
     |> duration.to_seconds
-  let dps = i.1 / float.truncate(round_duration)
-  Dps(source: i.0, dps:, damage: i.1)
+  let dps = i.1 / float.truncate(fight_duration)
+  let dpr = dps * 6
+  Dps(source: i.0, dps:, dpr:, damage: i.1)
 }
+
+fn print_svg(svg: List(String)) -> String {
+  list.flatten([
+    ["<svg id='dps-chart' width='500' height='200'>"],
+    svg,
+    ["</svg>"],
+  ])
+  |> string.concat
+}
+
+fn to_svg(dps: Dps, idx: Int) -> String {
+  let i = idx * 10
+  "<g class='bar'>"
+  <> {
+    "<rect x='0' y='"
+    <> int.to_string(i)
+    <> "' width='"
+    <> int.to_string(dps.damage)
+    <> "' height='10' fill='"
+    <> name_to_color(dps.source)
+    <> "'></rect>"
+  }
+  <> {
+    "  <text x='0' y='"
+    <> { i + 10 |> int.to_string() }
+    <> "'>"
+    <> dps.source
+    <> "</text>"
+  }
+  <> "</g>"
+}
+
+fn hash_string(name: String) -> Int {
+  name
+  |> string.to_graphemes
+  |> list.fold(0, fn(hash, char) {
+    hash |> int.multiply(31) |> int.add(to_ascii_int(char))
+  })
+}
+
+fn name_to_color(name: String) -> String {
+  let hue = name |> hash_string |> int.absolute_value |> io.debug
+  "hsl(" <> int.to_string(hue % 360) <> ", 70%, 50%)"
+}
+
+@external(erlang, "nwdeeps_ffi", "to_ascii_int")
+fn to_ascii_int(char: String) -> Int
 
 @external(erlang, "nwdeeps_ffi", "clear_terminal")
 fn clear_terminal() -> Nil
