@@ -9,10 +9,18 @@ pub type Log {
   Attack(time: String, source: String, target: String, hit: Bool, roll: String)
   Damage(time: String, source: String, target: String, value: Int, roll: String)
   Initiative(time: String, source: String, value: Int, roll: String)
+  Experience(time: String, value: Int)
+  Reset
 }
 
 pub fn parse(line: String) -> Option(Log) {
-  [parse.initiative(), parse.attack(), parse.damage()]
+  [
+    parse.initiative(),
+    parse.attack(),
+    parse.damage(),
+    parse.experience(),
+    parse.reset(),
+  ]
   |> one_of(line)
 }
 
@@ -77,6 +85,17 @@ fn match_to_event(
           |> result.map_error(fn(_) { error.UnknownValueType(value) })
         x -> Error(error.RegexpScanToEvent(x))
       }
+    parse.Experience -> {
+      case match.submatches {
+        [Some(_date), Some(time), Some(value)] ->
+          value
+          |> int.parse
+          |> result.map(fn(value) { Experience(time:, value:) })
+          |> result.map_error(fn(_) { error.UnknownValueType(value) })
+        x -> Error(error.RegexpScanToEvent(x))
+      }
+    }
+    parse.Reset -> Ok(Reset)
     _ -> todo as "event not implemented yet"
   }
 }

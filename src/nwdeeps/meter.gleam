@@ -31,6 +31,8 @@ pub opaque type State {
     previous: Dict(String, List(log.Log)),
     round_start: Timestamp,
     last_log: Timestamp,
+    xp_start: Timestamp,
+    xp_total: Int,
   )
 }
 
@@ -41,6 +43,8 @@ pub fn start() {
       previous: dict.new(),
       round_start: timestamp.system_time(),
       last_log: timestamp.system_time(),
+      xp_start: timestamp.system_time(),
+      xp_total: 0,
     )
   actor.start(state, loop)
 }
@@ -49,25 +53,52 @@ fn loop(msg: Event, state: State) -> actor.Next(Event, State) {
   case msg {
     Log(log) -> {
       let state = case log {
-        log.Initiative(time, _, _, _) -> {
-          io.println("==new fight==")
-          State(
-            current: [],
-            previous: dict.insert(state.previous, time, state.current),
-            round_start: timestamp.system_time(),
-            last_log: timestamp.system_time(),
-          )
+        //log.Initiative(time, _, _, _) -> {
+        //  io.println("==new fight==")
+        //  State(
+        //    current: [],
+        //    previous: dict.insert(state.previous, time, state.current),
+        //    round_start: timestamp.system_time(),
+        //    last_log: timestamp.system_time(),
+        //  )
+        //}
+        log.Reset ->
+          State(..state, xp_total: 0, xp_start: timestamp.system_time())
+        log.Experience(_, xp) -> State(..state, xp_total: state.xp_total + xp)
+        x -> {
+          let current_time = timestamp.system_time()
+          let diff =
+            current_time
+            |> timestamp.difference(state.last_log, _)
+            |> duration.to_seconds
+            |> float.round
+          case diff {
+            diff if diff > 12 ->
+              State(
+                ..state,
+                current: [],
+                previous: dict.insert(
+                  state.previous,
+                  timestamp.to_rfc3339(current_time, duration.seconds(0)),
+                  state.current,
+                ),
+                round_start: timestamp.system_time(),
+                last_log: timestamp.system_time(),
+              )
+
+            _ ->
+              State(
+                ..state,
+                current: [x, ..state.current],
+                last_log: timestamp.system_time(),
+              )
+          }
         }
-        x ->
-          State(
-            ..state,
-            current: [x, ..state.current],
-            last_log: timestamp.system_time(),
-          )
       }
       actor.continue(state)
     }
     PrintDps -> {
+      // dps
       let meters =
         fn(dps: dict.Dict(String, Int), log: log.Log) {
           case log {
@@ -86,14 +117,32 @@ fn loop(msg: Event, state: State) -> actor.Next(Event, State) {
         |> list.map(to_dps(_, state))
         |> list.sort(fn(a, b) { int.compare(a.damage, b.damage) })
         |> list.reverse
+
       let top =
         meters
         |> list.first
         |> result.unwrap(Dps("", 0, 0, 0))
-      clear_terminal()
-      io.println("DPS")
-      io.println("")
-      let _ =
+
+      // time since last message
+      let diff =
+        timestamp.system_time()
+        |> timestamp.difference(state.last_log, _)
+        |> duration.to_seconds
+        |> float.round
+
+      // XP
+
+      let xph = {
+        let session =
+          timestamp.difference(state.xp_start, timestamp.system_time())
+          |> duration.to_seconds
+        //|> float.round
+        let xph = int.to_float(state.xp_total) /. session *. 3600.0
+        "XP/h: " <> int.to_string(float.round(xph)) <> "\n\n"
+      }
+
+      let title = " DPS | Last Update: " <> int.to_string(diff) <> "\n\n"
+      let meters_print =
         meters
         |> list.index_map(fn(dps, _idx) {
           let done =
@@ -122,8 +171,9 @@ fn loop(msg: Event, state: State) -> actor.Next(Event, State) {
           <> "\n"
         })
         |> string.concat
-        |> io.print
 
+      clear_terminal()
+      io.print(title <> xph <> meters_print)
       //let _ = meters |> list.index_map(to_svg) |> print_svg |> io.debug
 
       timestamp.difference(state.round_start, state.last_log)
