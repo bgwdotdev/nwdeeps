@@ -5,6 +5,7 @@ import gleam/io
 import gleam/list
 import gleam/option.{type Option, None, Some}
 import gleam/otp/actor
+import gleam/result
 import gleam/string
 import gleam/time/duration
 import gleam/time/timestamp.{type Timestamp}
@@ -67,9 +68,6 @@ fn loop(msg: Event, state: State) -> actor.Next(Event, State) {
       actor.continue(state)
     }
     PrintDps -> {
-      io.println("")
-      clear_terminal()
-      io.println("==dps==")
       let meters =
         fn(dps: dict.Dict(String, Int), log: log.Log) {
           case log {
@@ -86,25 +84,47 @@ fn loop(msg: Event, state: State) -> actor.Next(Event, State) {
         |> list.fold(state.current, dict.new(), _)
         |> dict.to_list
         |> list.map(to_dps(_, state))
-        |> list.sort(fn(a, b) { int.compare(a.dps, b.dps) })
+        |> list.sort(fn(a, b) { int.compare(a.damage, b.damage) })
         |> list.reverse
+      let top =
+        meters
+        |> list.first
+        |> result.unwrap(Dps("", 0, 0, 0))
+      clear_terminal()
+      io.println("DPS")
+      io.println("")
       let _ =
         meters
-        |> list.index_map(fn(dps, idx) {
-          io.println(
-            int.to_string(idx)
-            <> ". "
-            <> dps.source
-            <> ": "
-            <> int.to_string(dps.dps)
-            <> " : "
-            <> int.to_string(dps.dpr)
-            <> " ("
-            <> int.to_string(dps.damage)
-            <> ")",
+        |> list.index_map(fn(dps, _idx) {
+          let done =
+            int.to_float(dps.damage) /. int.to_float(top.damage) *. 10.0
+          let spaces = 10.0 -. done
+
+          "["
+          <> string.repeat("=", float.round(done *. 2.0))
+          <> string.repeat(" ", float.round(spaces *. 2.0))
+          <> "] "
+          <> string.repeat(
+            " ",
+            { top.dpr |> int.to_string |> string.length }
+              - { dps.dpr |> int.to_string |> string.length },
           )
+          <> int.to_string(dps.dpr)
+          <> " : "
+          <> string.repeat(
+            " ",
+            { top.damage |> int.to_string |> string.length }
+              - { dps.damage |> int.to_string |> string.length },
+          )
+          <> int.to_string(dps.damage)
+          <> " : "
+          <> dps.source
+          <> "\n"
         })
-      let _ = meters |> list.index_map(to_svg) |> print_svg |> io.debug
+        |> string.concat
+        |> io.print
+
+      //let _ = meters |> list.index_map(to_svg) |> print_svg |> io.debug
 
       timestamp.difference(state.round_start, state.last_log)
       |> duration.to_seconds
@@ -175,3 +195,6 @@ fn to_ascii_int(char: String) -> Int
 
 @external(erlang, "nwdeeps_ffi", "clear_terminal")
 fn clear_terminal() -> Nil
+
+@external(erlang, "nwdeeps_ffi", "top_terminal")
+fn top_terminal() -> Nil
