@@ -20,12 +20,14 @@ pub type Event {
 // 
 const header = "^\\[CHAT WINDOW TEXT\\] \\[(.*) (\\d\\d:\\d\\d:\\d\\d)\\] "
 
+const name = "([a-zA-Z\\(\\)\\'\\-\\s]*)"
+
 /// EXAMPLE
 /// 
 /// > F : Initiative Roll : 11 : (12 - 1 = 11)
 /// 
 pub fn initiative() -> Parse {
-  let regex = "([a-zA-Z\\-\\s]*) : Initiative Roll : (\\d*) : \\((.*)\\)$"
+  let regex = name <> " : Initiative Roll : (\\d*) : \\((.*)\\)$"
   let assert Ok(regex) = regexp.from_string(header <> regex)
   Parse(event: Initiative, regexp: regex)
 }
@@ -40,7 +42,10 @@ pub fn initiative() -> Parse {
 ///
 pub fn attack() -> Parse {
   let regex =
-    "([a-zA-Z\\-\\s]*) attacks ([a-zA-Z\\-\\s]*) : \\*(critical hit|hit|miss)\\* : \\((.*)\\)$"
+    name
+    <> " attacks "
+    <> name
+    <> " : \\*(critical hit|hit|miss)\\* : \\((.*)\\)$"
   let assert Ok(regex) = regexp.from_string(header <> regex)
   Parse(event: Attack, regexp: regex)
 }
@@ -51,7 +56,11 @@ pub fn attack() -> Parse {
 ///
 pub fn aoo() -> Parse {
   let regex =
-    "Attack Of Opportunity : ([a-zA-Z\\-\\s]*) attacks ([a-zA-Z\\-\\s]*) : \\*(critical hit|hit|miss)\\* : \\((.*)\\)$"
+    "Attack Of Opportunity : "
+    <> name
+    <> " attacks "
+    <> name
+    <> " : \\*(critical hit|hit|miss)\\* : \\((.*)\\)$"
   let assert Ok(regex) = regexp.from_string(header <> regex)
   Parse(event: AOO, regexp: regex)
 }
@@ -65,7 +74,7 @@ pub fn aoo() -> Parse {
 /// > Arcane Archer damages Summoned Zombie Dread Tyrant: 9 (2 Physical 7 Fire)
 ///
 pub fn damage() -> Parse {
-  let regex = "([a-zA-Z\\-\\s]*) damages ([a-zA-Z\\-\\s]*): (\\d*) \\((.*)\\)$"
+  let regex = name <> " damages " <> name <> ": (\\d*) \\((.*)\\)$"
   let assert Ok(regex) = regexp.from_string(header <> regex)
   Parse(event: Damage, regexp: regex)
 }
@@ -75,7 +84,7 @@ pub fn damage() -> Parse {
 /// > F : Healed 0 hit points.
 ///
 pub fn heal() -> Parse {
-  let regex = "([a-zA-Z\\-\\s]*) : Healed (\\d*) hit points\\.$"
+  let regex = name <> " : Healed (\\d*) hit points\\.$"
   let assert Ok(regex) = regexp.from_string(header <> regex)
   Parse(event: Heal, regexp: regex)
 }

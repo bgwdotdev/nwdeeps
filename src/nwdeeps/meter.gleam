@@ -138,7 +138,7 @@ fn loop(msg: Event, state: State) -> actor.Next(Event, State) {
           |> duration.to_seconds
         //|> float.round
         let xph = int.to_float(state.xp_total) /. session *. 3600.0
-        "XP/h: " <> int.to_string(float.round(xph)) <> "\n\n"
+        " XP/h: " <> int.to_string(float.round(xph)) <> "\n\n"
       }
 
       let title = " DPS | Last Update: " <> int.to_string(diff) <> "\n\n"
