@@ -1,7 +1,9 @@
 import gleam/int
+import gleam/io
 import gleam/option.{type Option, None, Some}
 import gleam/regexp
 import gleam/result
+import gleam/string
 import nwdeeps/error
 import nwdeeps/parse
 
@@ -30,8 +32,13 @@ fn one_of(regexs: List(parse.Parse), line: String) -> Option(Log) {
     [x, ..xs] ->
       case regexp.scan(x.regexp, line) {
         [match] -> {
-          let assert Ok(m) = match_to_event(x.event, match)
-          Some(m)
+          case match_to_event(x.event, match) {
+            Ok(m) -> Some(m)
+            Error(e) -> {
+              io.debug(e)
+              one_of([], line)
+            }
+          }
         }
         _ -> one_of(xs, line)
       }
@@ -56,7 +63,12 @@ fn match_to_event(
           hit
           |> hit_to_bool
           |> result.map(fn(hit) { Attack(time:, source:, target:, hit:, roll:) })
-        x -> Error(error.RegexpScanToEvent(x))
+        x ->
+          Error(error.RegexpScanToEvent(
+            event: string.inspect(parse),
+            line: match.content,
+            parsed: x,
+          ))
       }
     parse.Damage ->
       case match.submatches {
@@ -74,7 +86,12 @@ fn match_to_event(
             Damage(time:, source:, target:, value:, roll:)
           })
           |> result.map_error(fn(_) { error.UnknownValueType(value) })
-        x -> Error(error.RegexpScanToEvent(x))
+        x ->
+          Error(error.RegexpScanToEvent(
+            event: string.inspect(parse),
+            line: match.content,
+            parsed: x,
+          ))
       }
     parse.Initiative ->
       case match.submatches {
@@ -83,7 +100,12 @@ fn match_to_event(
           |> int.parse
           |> result.map(fn(value) { Initiative(time:, source:, value:, roll:) })
           |> result.map_error(fn(_) { error.UnknownValueType(value) })
-        x -> Error(error.RegexpScanToEvent(x))
+        x ->
+          Error(error.RegexpScanToEvent(
+            event: string.inspect(parse),
+            line: match.content,
+            parsed: x,
+          ))
       }
     parse.Experience -> {
       case match.submatches {
@@ -92,7 +114,12 @@ fn match_to_event(
           |> int.parse
           |> result.map(fn(value) { Experience(time:, value:) })
           |> result.map_error(fn(_) { error.UnknownValueType(value) })
-        x -> Error(error.RegexpScanToEvent(x))
+        x ->
+          Error(error.RegexpScanToEvent(
+            event: string.inspect(parse),
+            line: match.content,
+            parsed: x,
+          ))
       }
     }
     parse.Reset -> Ok(Reset)
