@@ -66,6 +66,7 @@ fn loop(state: State) {
     }
     Ok(Eof) -> {
       case state.last_update > 60 * 5 {
+        // check for log rotation
         True -> {
           let assert Ok(log) = newest_log(state.folder) as "failed to find log"
           case state.file_name == log.full_path {
@@ -81,6 +82,7 @@ fn loop(state: State) {
           }
           loop(state)
         }
+        // loop
         False -> {
           process.sleep(16)
           State(..state, last_update: state.last_update + 1)

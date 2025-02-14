@@ -18,7 +18,7 @@ close(File) ->
 list_dir(Dir) ->
   case file:list_dir(Dir) of
     {error, Reason} -> {error, {file, Reason}};
-    {ok, FileNames} -> {ok, lists:map(fun(F) -> unicode:characters_to_binary(F) end, FileNames)}
+    {ok, FileNames} -> {ok, lists:map(fun unicode:characters_to_binary/1, FileNames)}
   end.
 
 read_file_mtime(File) ->
