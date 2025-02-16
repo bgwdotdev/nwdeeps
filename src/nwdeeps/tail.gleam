@@ -110,8 +110,9 @@ fn is_client_log(file: String) -> Bool {
 }
 
 fn file_to_log(file: String, folder: String) -> Result(Log, error.Error) {
-  case read_file_mtime(string.join([folder, file], "/")) {
-    Ok(mtime) -> Ok(Log(full_path: folder <> file, mtime:))
+  let full_path = string.join([folder, file], "/")
+  case read_file_mtime(full_path) {
+    Ok(mtime) -> Ok(Log(full_path: full_path, mtime:))
     Error(e) -> Error(e)
   }
 }

@@ -1,3 +1,4 @@
+import envoy
 import gleam/erlang/process.{type Subject}
 import gleam/io
 import nwdeeps/meter
@@ -11,11 +12,11 @@ fn print_dps(subj: Subject(meter.Event)) {
 
 pub fn main() {
   io.println("==nwdeeps==")
-  let log_file =
-    "/home/bgw/.var/app/com.valvesoftware.Steam/.local/share/Steam/steamapps/compatdata/704450/pfx/drive_c/users/steamuser/Documents/Neverwinter Nights/logs"
+  let assert Ok(log_file) = envoy.get("NWDEEPS_PATH")
+    as "set env var $NWDEEPS_PATH to the log folder for neverwinter nights"
 
   let assert Ok(subj) = meter.start()
   let assert Ok(Nil) = tail.start(subj, log_file)
-  process.start(print_dps(subj), True)
+  print_dps(subj) |> process.start(True)
   process.sleep_forever()
 }
