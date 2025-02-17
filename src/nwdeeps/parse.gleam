@@ -12,6 +12,9 @@ pub type Event {
   Heal
   Experience
   Reset
+  CurseSongCd
+  ActiveCd
+  DoneResting
 }
 
 // EXAMPLE
@@ -21,6 +24,8 @@ pub type Event {
 const header = "^\\[CHAT WINDOW TEXT\\] \\[(.*) (\\d\\d:\\d\\d:\\d\\d)\\] "
 
 const name = "([a-zA-Z\\(\\)\\'\\-\\s]*)"
+
+//const timer = "(\\d*) minutes?"
 
 /// EXAMPLE
 /// 
@@ -108,4 +113,39 @@ pub fn reset() -> Parse {
     "Invalid or inaccessible command '-reset'. Type -help for a list of commands."
   let assert Ok(regex) = regexp.from_string(header <> regex)
   Parse(event: Reset, regexp: regex)
+}
+
+/// EXAMPLE
+///
+/// > Curse Song has regained a charge. (11 / 17)
+///
+pub fn curse_song_cd() -> Parse {
+  let regex = "Curse Song has regained a charge. (\\d* / \\d*)"
+  let assert Ok(regex) = regexp.from_string(header <> regex)
+  Parse(event: CurseSongCd, regexp: regex)
+}
+
+/// EXAMPLE
+///
+/// > Dirge of Terror has a timer of 3 minutes. You may not use Dirge of Terror again for this period of time.
+///
+/// > Atrocity: Whisper has a timer of 1 minute and 40 seconds. You may not use Atrocity: Whisper again for this period of time.
+///
+/// > loadoutfit has a timer of 6 seconds. You may not use loadoutfit again for this period of time.
+///
+pub fn active_cd() -> Parse {
+  let regex =
+    "(.*?) has a timer of (?:(\\d+) minutes?)?(?: and )?(?:(\\d*) seconds?)?. You may not use .*? again for this period of time.$"
+  let assert Ok(regex) = regexp.from_string(header <> regex)
+  Parse(event: ActiveCd, regexp: regex)
+}
+
+/// EXAMPLE
+///
+/// > Done resting.
+///
+pub fn done_resting() -> Parse {
+  let regex = "Done resting."
+  let assert Ok(regex) = regexp.from_string(header <> regex)
+  Parse(event: DoneResting, regexp: regex)
 }

@@ -13,6 +13,8 @@ pub type Log {
   Initiative(time: String, source: String, value: Int, roll: String)
   Experience(time: String, value: Int)
   Reset
+  ActiveCd(time: String, active: String, seconds: Int)
+  DoneResting
 }
 
 pub fn parse(line: String) -> Option(Log) {
@@ -22,6 +24,8 @@ pub fn parse(line: String) -> Option(Log) {
     parse.damage(),
     parse.experience(),
     parse.reset(),
+    parse.active_cd(),
+    parse.done_resting(),
   ]
   |> one_of(line)
 }
@@ -122,8 +126,41 @@ fn match_to_event(
           ))
       }
     }
+    parse.ActiveCd -> {
+      case match.submatches {
+        [Some(_date), Some(time), Some(active), Some(minutes), Some(seconds)] -> {
+          {
+            use minutes <- result.try(minutes |> int.parse)
+            use seconds <- result.map(seconds |> int.parse)
+            ActiveCd(time:, active:, seconds: minutes * 60 + seconds)
+          }
+          |> result.map_error(fn(_) {
+            error.UnknownValueType(minutes <> seconds)
+          })
+        }
+        [Some(_date), Some(time), Some(active), Some(minutes)] ->
+          minutes
+          |> int.parse
+          |> result.map(fn(minutes) {
+            ActiveCd(time:, active:, seconds: minutes * 60)
+          })
+          |> result.map_error(fn(_) { error.UnknownValueType(minutes) })
+        [Some(_date), Some(time), Some(active), None, Some(seconds)] ->
+          seconds
+          |> int.parse
+          |> result.map(fn(seconds) { ActiveCd(time:, active:, seconds:) })
+          |> result.map_error(fn(_) { error.UnknownValueType(seconds) })
+        x ->
+          Error(error.RegexpScanToEvent(
+            event: string.inspect(parse),
+            line: match.content,
+            parsed: x,
+          ))
+      }
+    }
     parse.Reset -> Ok(Reset)
-    _ -> todo as "event not implemented yet"
+    parse.DoneResting -> Ok(DoneResting)
+    e -> todo as { "event not implemented yet: " <> string.inspect(e) }
   }
 }
 
