@@ -12,9 +12,11 @@ pub type Event {
   Heal
   Experience
   Reset
+  ResetCd
   CurseSongCd
   ActiveCd
   DoneResting
+  Charge
 }
 
 // EXAMPLE
@@ -117,6 +119,17 @@ pub fn reset() -> Parse {
 
 /// EXAMPLE
 ///
+/// > Invalid or inaccessible command '-reset'. Type -help for a list of commands.
+///
+pub fn reset_cd() -> Parse {
+  let regex =
+    "Invalid or inaccessible command '-resetcd'. Type -help for a list of commands."
+  let assert Ok(regex) = regexp.from_string(header <> regex)
+  Parse(event: ResetCd, regexp: regex)
+}
+
+/// EXAMPLE
+///
 /// > Curse Song has regained a charge. (11 / 17)
 ///
 pub fn curse_song_cd() -> Parse {
@@ -148,4 +161,16 @@ pub fn done_resting() -> Parse {
   let regex = "Done resting."
   let assert Ok(regex) = regexp.from_string(header <> regex)
   Parse(event: DoneResting, regexp: regex)
+}
+
+/// EXAMPLE
+///
+/// > Imbue Arrow has regained a charge.
+///
+/// > Bard Song has regained a charge. (17 / 18)
+///
+pub fn charge() -> Parse {
+  let regex = "(.*?) has regained a charge\\.(?: \\(\\d* / \\d*\\))?$"
+  let assert Ok(regex) = regexp.from_string(header <> regex)
+  Parse(event: Charge, regexp: regex)
 }

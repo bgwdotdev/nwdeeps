@@ -61,6 +61,7 @@ fn loop(msg: Event, state: State) -> actor.Next(Event, State) {
       let state = case log {
         log.Reset ->
           State(..state, xp_total: 0, xp_start: timestamp.system_time())
+        log.ResetCd -> State(..state, cds: dict.new())
         log.Experience(_, xp) -> State(..state, xp_total: state.xp_total + xp)
         log.DoneResting ->
           State(
@@ -74,6 +75,25 @@ fn loop(msg: Event, state: State) -> actor.Next(Event, State) {
             ..state,
             cds: dict.upsert(state.cds, active, fn(_) {
               Cd(seconds, timestamp.system_time())
+            }),
+          )
+
+        log.Charge(_, active) ->
+          State(
+            ..state,
+            cds: dict.upsert(state.cds, active, fn(v) {
+              let now = timestamp.system_time()
+              case v {
+                Some(cd) -> {
+                  Cd(
+                    duration: timestamp.difference(cd.start, now)
+                      |> duration.to_seconds
+                      |> float.round,
+                    start: now,
+                  )
+                }
+                None -> Cd(duration: 0, start: now)
+              }
             }),
           )
 

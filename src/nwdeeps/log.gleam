@@ -13,8 +13,10 @@ pub type Log {
   Initiative(time: String, source: String, value: Int, roll: String)
   Experience(time: String, value: Int)
   Reset
+  ResetCd
   ActiveCd(time: String, active: String, seconds: Int)
   DoneResting
+  Charge(time: String, active: String)
 }
 
 pub fn parse(line: String) -> Option(Log) {
@@ -24,8 +26,10 @@ pub fn parse(line: String) -> Option(Log) {
     parse.damage(),
     parse.experience(),
     parse.reset(),
+    parse.reset_cd(),
     parse.active_cd(),
     parse.done_resting(),
+    parse.charge(),
   ]
   |> one_of(line)
 }
@@ -159,7 +163,19 @@ fn match_to_event(
       }
     }
     parse.Reset -> Ok(Reset)
+    parse.ResetCd -> Ok(ResetCd)
     parse.DoneResting -> Ok(DoneResting)
+    parse.Charge ->
+      case match.submatches {
+        [Some(_date), Some(time), Some(active)] -> Ok(Charge(time:, active:))
+        x ->
+          Error(error.RegexpScanToEvent(
+            event: string.inspect(parse),
+            line: match.content,
+            parsed: x,
+          ))
+      }
+
     e -> todo as { "event not implemented yet: " <> string.inspect(e) }
   }
 }
