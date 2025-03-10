@@ -17,6 +17,7 @@ pub type Log {
   ActiveCd(time: String, active: String, seconds: Int)
   DoneResting
   Charge(time: String, active: String)
+  Loading
 }
 
 pub fn parse(line: String) -> Option(Log) {
@@ -30,6 +31,7 @@ pub fn parse(line: String) -> Option(Log) {
     parse.active_cd(),
     parse.done_resting(),
     parse.charge(),
+    parse.loading(),
   ]
   |> one_of(line)
 }
@@ -168,6 +170,17 @@ fn match_to_event(
     parse.Charge ->
       case match.submatches {
         [Some(_date), Some(time), Some(active)] -> Ok(Charge(time:, active:))
+        x ->
+          Error(error.RegexpScanToEvent(
+            event: string.inspect(parse),
+            line: match.content,
+            parsed: x,
+          ))
+      }
+
+    parse.Loading ->
+      case match.submatches {
+        [Some(_date), Some(_time)] -> Ok(Loading)
         x ->
           Error(error.RegexpScanToEvent(
             event: string.inspect(parse),

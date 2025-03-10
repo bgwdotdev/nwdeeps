@@ -70,6 +70,10 @@ const tests = [
     expect: parse.Charge,
     text: "[CHAT WINDOW TEXT] [Tue Feb 18 17:01:23] Imbue Arrow has regained a charge.",
   ),
+  Test(
+    expect: parse.Loading,
+    text: "[CHAT WINDOW TEXT] [Sun Mar  9 10:59:56] Area Setting: [Magic] [State] [Teleport] [Transfer] [Death]",
+  ),
 ]
 
 fn do_test(parser: parse.Parse) {
@@ -120,4 +124,8 @@ pub fn done_resting_test() {
 
 pub fn charge_test() {
   do_test(parse.charge())
+}
+
+pub fn loading_test() {
+  do_test(parse.loading())
 }

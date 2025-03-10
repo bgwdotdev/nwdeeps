@@ -17,6 +17,7 @@ pub type Event {
   ActiveCd
   DoneResting
   Charge
+  Loading
 }
 
 // EXAMPLE
@@ -173,4 +174,14 @@ pub fn charge() -> Parse {
   let regex = "(.*?) has regained a charge\\.(?: \\(\\d* / \\d*\\))?$"
   let assert Ok(regex) = regexp.from_string(header <> regex)
   Parse(event: Charge, regexp: regex)
+}
+
+/// EXAMPLE
+///
+/// > Area Setting: [Magic] [State] [Teleport] [Transfer] [Death]
+///
+pub fn loading() -> Parse {
+  let regex = "Area Setting: .*"
+  let assert Ok(regex) = regexp.from_string(header <> regex)
+  Parse(event: Loading, regexp: regex)
 }

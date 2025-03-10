@@ -34,6 +34,7 @@ pub opaque type State {
     xp_start: Timestamp,
     xp_total: Int,
     cds: Dict(String, Cd),
+    last_loading: Timestamp,
   )
 }
 
@@ -51,6 +52,7 @@ pub fn start() {
       xp_start: timestamp.system_time(),
       xp_total: 0,
       cds: dict.new(),
+      last_loading: timestamp.system_time(),
     )
   actor.start(state, loop)
 }
@@ -96,6 +98,7 @@ fn loop(msg: Event, state: State) -> actor.Next(Event, State) {
               }
             }),
           )
+        log.Loading -> State(..state, last_loading: timestamp.system_time())
 
         x -> {
           let current_time = timestamp.system_time()
@@ -184,6 +187,15 @@ fn view_dps(state: State) -> String {
     " XP/h: " <> int.to_string(float.round(xph)) <> "\n\n"
   }
 
+  // LOADING
+  let loading = {
+    let time_since =
+      timestamp.difference(state.last_loading, now)
+      |> duration.to_seconds
+      |> float.round
+    " Loading: " <> int.to_string(time_since) <> "\n\n"
+  }
+
   // CDS
 
   let cds = {
@@ -237,7 +249,7 @@ fn view_dps(state: State) -> String {
     |> string.concat
 
   // OUTPUT
-  title <> xph <> meters_print <> "\n\n" <> cds
+  title <> xph <> loading <> meters_print <> "\n\n" <> cds
 }
 
 type Dps {
