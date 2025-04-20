@@ -249,7 +249,8 @@ fn view_dps(state: State) -> String {
     |> string.concat
 
   // OUTPUT
-  title <> xph <> loading <> meters_print <> "\n\n" <> cds
+  [title, xph, loading, meters_print, "\n\n", cds]
+  |> string.join("")
 }
 
 type Dps {
