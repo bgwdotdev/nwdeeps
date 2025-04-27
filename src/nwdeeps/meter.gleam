@@ -12,6 +12,7 @@ import gleam/time/timestamp.{type Timestamp}
 import nwdeeps/error
 import nwdeeps/log
 import shore
+import shore/key
 
 // MODEL 
 
@@ -141,8 +142,8 @@ pub fn update(state: State, msg: Event) -> #(State, List(fn() -> Event)) {
 
     PrintDps -> {
       let dps = view_dps(state)
-      clear_terminal()
-      io.print(dps)
+      //clear_terminal()
+      //io.print(dps)
       //let _ = meters |> list.index_map(to_svg) |> print_svg |> io.debug
       #(state, [])
     }
@@ -152,7 +153,7 @@ pub fn update(state: State, msg: Event) -> #(State, List(fn() -> Event)) {
 // VIEW
 
 pub fn view(state: State) -> shore.Node(Event) {
-  shore.Split(shore.Split1(shore.Text(view_dps(state), None, None)))
+  shore.Split(shore.Split1(view_dps(state)))
 }
 
 fn meters(state: State) -> List(Dps) {
@@ -175,28 +176,22 @@ fn meters(state: State) -> List(Dps) {
   |> list.reverse
 }
 
-fn view_top_dps(meters: List(Dps)) -> Dps {
-  meters
-  |> list.first
-  |> result.unwrap(Dps("", 0, 0, 0))
-}
-
-fn view_xph(state: State, time: Time) -> String {
+fn view_xph(state: State, time: Time) -> shore.Node(Event) {
   let session =
     timestamp.difference(state.xp_start, time.now) |> duration.to_seconds
   let xph = int.to_float(state.xp_total) /. session *. 3600.0
-  " XP/h: " <> int.to_string(float.round(xph)) <> "\n\n"
+  { " XP/h: " <> int.to_string(float.round(xph)) } |> shore.Text(None, None)
 }
 
-fn view_loading(state: State, time: Time) -> String {
+fn view_loading(state: State, time: Time) -> shore.Node(Event) {
   let time_since =
     timestamp.difference(state.last_loading, time.now)
     |> duration.to_seconds
     |> float.round
-  " Loading: " <> int.to_string(time_since) <> "\n\n"
+  { " Loading: " <> int.to_string(time_since) } |> shore.Text(None, None)
 }
 
-fn view_cds(state: State, time: Time) -> String {
+fn view_cds(state: State, time: Time) -> shore.Node(Event) {
   let cds =
     state.cds
     |> dict.to_list
@@ -209,59 +204,62 @@ fn view_cds(state: State, time: Time) -> String {
         |> int.subtract({ cd.1 }.duration, _)
         |> int.max(0)
 
-      int.to_string(left) <> " <- " <> cd.0
+      [int.to_string(left), cd.0]
     })
-    |> string.join("\n")
 
-  " cooldowns:\n\n" <> cds
+  [["cooldown", "ability"], ..cds] |> shore.Table(40, _)
 }
 
-fn view_title(time: Time) -> String {
-  " DPS | Last Update: " <> int.to_string(time.diff) <> "\n\n"
+fn view_title(time: Time) -> shore.Node(Event) {
+  { " DPS | Last Update: " <> int.to_string(time.diff) }
+  |> shore.Text(None, None)
 }
 
-fn view_meters(meters: List(Dps), top: Dps) -> String {
-  meters
-  |> list.index_map(fn(dps, _idx) {
-    let done = int.to_float(dps.damage) /. int.to_float(top.damage) *. 10.0
-    let spaces = 10.0 -. done
+fn view_meters(meters: List(Dps), top: Dps) -> shore.Node(Event) {
+  meters |> list.map(view_meter(_, top)) |> shore.Div(shore.Col)
+}
 
-    "["
-    <> string.repeat("=", float.round(done *. 2.0))
-    <> string.repeat(" ", float.round(spaces *. 2.0))
-    <> "] "
-    <> string.repeat(
-      " ",
+fn view_meter(dps: Dps, top: Dps) -> shore.Node(Event) {
+  // right align numbers
+  let dpr_right =
+    {
       { top.dpr |> int.to_string |> string.length }
-        - { dps.dpr |> int.to_string |> string.length },
-    )
-    <> int.to_string(dps.dpr)
-    <> " : "
-    <> string.repeat(
-      " ",
+      - { dps.dpr |> int.to_string |> string.length }
+    }
+    |> string.repeat(" ", _)
+  let damage_right =
+    {
       { top.damage |> int.to_string |> string.length }
-        - { dps.damage |> int.to_string |> string.length },
-    )
-    <> int.to_string(dps.damage)
-    <> " : "
-    <> dps.source
-    <> "\n"
-  })
-  |> string.concat
+      - { dps.damage |> int.to_string |> string.length }
+    }
+    |> string.repeat(" ", _)
+
+  [
+    shore.Progress(30, top.damage, dps.damage, shore.Blue),
+    shore.Text(dpr_right <> int.to_string(dps.dpr), None, None),
+    shore.Text(damage_right <> int.to_string(dps.damage), None, None),
+    shore.Text(dps.source, None, None),
+  ]
+  |> shore.Div(shore.Row)
 }
 
-fn view_dps(state: State) -> String {
+fn view_dps(state: State) -> shore.Node(Event) {
   let time = time(state)
   let meters = meters(state)
-  let top = view_top_dps(meters)
-  let xph = view_xph(state, time)
-  let loading = view_loading(state, time)
-  let cds = view_cds(state, time)
-  let title = view_title(time)
-  let meters_print = view_meters(meters, top)
-  // OUTPUT
-  [title, xph, loading, meters_print, "\n\n", cds]
-  |> string.join("")
+  let top = top_dps(meters)
+
+  let div = [
+    view_title(time),
+    view_xph(state, time),
+    view_loading(state, time),
+    shore.BR,
+    view_meters(meters, top),
+    shore.BR,
+    view_cds(state, time),
+    shore.KeyBind(key.Char("r"), Log(log.Reset)),
+    shore.KeyBind(key.Char("c"), Log(log.ResetCd)),
+  ]
+  shore.Div(div, shore.Col)
 }
 
 // HELPERS 
@@ -279,6 +277,12 @@ fn to_dps(i: #(String, Int), state: State) -> Dps {
   Dps(source: i.0, dps:, dpr:, damage: i.1)
 }
 
+fn top_dps(meters: List(Dps)) -> Dps {
+  meters
+  |> list.first
+  |> result.unwrap(Dps("", 0, 0, 0))
+}
+
 fn time(state: State) -> Time {
   let now = timestamp.system_time()
   let diff =
@@ -292,6 +296,3 @@ fn time(state: State) -> Time {
 type Time {
   Time(now: Timestamp, diff: Int)
 }
-
-@external(erlang, "nwdeeps_ffi", "clear_terminal")
-fn clear_terminal() -> Nil
