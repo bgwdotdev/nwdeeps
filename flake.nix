@@ -13,9 +13,7 @@
           devShells.default = pkgs.mkShell {
             packages = with pkgs; [
               gleam
-              erlang_27
-              rebar3
-              websocat
+              erlang_28
             ];
           };
         }

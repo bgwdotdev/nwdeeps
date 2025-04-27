@@ -7,10 +7,11 @@ import gleam/string
 import nwdeeps/error
 import nwdeeps/log
 import nwdeeps/meter
+import shore
 
 type State {
   State(
-    subj: Subject(meter.Event),
+    subj: Subject(shore.Event(meter.Event)),
     folder: String,
     file_name: String,
     file: File,
@@ -23,7 +24,7 @@ type Log {
 }
 
 pub fn start(
-  subj: Subject(meter.Event),
+  subj: Subject(shore.Event(meter.Event)),
   log_folder: String,
 ) -> Result(Nil, error.Error) {
   use log <- result.try(log_folder |> newest_log)
@@ -60,6 +61,7 @@ fn loop(state: State) {
       line
       |> log.parse
       |> option.map(meter.new_log)
+      |> option.map(shore.cmd)
       |> option.map(process.send(state.subj, _))
       State(..state, last_update: 0)
       |> loop

@@ -11,19 +11,9 @@ import gleam/time/duration
 import gleam/time/timestamp.{type Timestamp}
 import nwdeeps/error
 import nwdeeps/log
+import shore
 
-pub opaque type Event {
-  Log(log.Log)
-  PrintDps
-}
-
-pub fn new_log(event: log.Log) -> Event {
-  Log(event)
-}
-
-pub fn print_dps() -> Event {
-  PrintDps
-}
+// MODEL 
 
 pub opaque type State {
   State(
@@ -42,7 +32,7 @@ type Cd {
   Cd(duration: Int, start: Timestamp)
 }
 
-pub fn start() {
+pub fn init() -> #(State, List(fn() -> Event)) {
   let state =
     State(
       current: [],
@@ -54,10 +44,26 @@ pub fn start() {
       cds: dict.new(),
       last_loading: timestamp.system_time(),
     )
-  actor.start(state, loop)
+  let cmd = []
+  #(state, cmd)
 }
 
-fn loop(msg: Event, state: State) -> actor.Next(Event, State) {
+// UPDATE 
+
+pub opaque type Event {
+  Log(log.Log)
+  PrintDps
+}
+
+pub fn new_log(event: log.Log) -> Event {
+  Log(event)
+}
+
+pub fn print_dps() -> Event {
+  PrintDps
+}
+
+pub fn update(state: State, msg: Event) -> #(State, List(fn() -> Event)) {
   case msg {
     Log(log) -> {
       let state = case log {
@@ -130,7 +136,7 @@ fn loop(msg: Event, state: State) -> actor.Next(Event, State) {
           }
         }
       }
-      actor.continue(state)
+      #(state, [])
     }
 
     PrintDps -> {
@@ -138,120 +144,127 @@ fn loop(msg: Event, state: State) -> actor.Next(Event, State) {
       clear_terminal()
       io.print(dps)
       //let _ = meters |> list.index_map(to_svg) |> print_svg |> io.debug
-      actor.continue(state)
+      #(state, [])
     }
   }
 }
 
-fn view_dps(state: State) -> String {
-  let now = timestamp.system_time()
-  // DPS
+// VIEW
 
-  let meters =
-    fn(dps: dict.Dict(String, Int), log: log.Log) {
-      case log {
-        log.Damage(_, source, _, value, _) ->
-          dict.upsert(dps, source, fn(v) {
-            case v {
-              Some(v) -> v + value
-              None -> value
-            }
-          })
-        _ -> dps
-      }
+pub fn view(state: State) -> shore.Node(Event) {
+  shore.Split(shore.Split1(shore.Text(view_dps(state), None, None)))
+}
+
+fn meters(state: State) -> List(Dps) {
+  fn(dps: dict.Dict(String, Int), log: log.Log) {
+    case log {
+      log.Damage(_, source, _, value, _) ->
+        dict.upsert(dps, source, fn(v) {
+          case v {
+            Some(v) -> v + value
+            None -> value
+          }
+        })
+      _ -> dps
     }
-    |> list.fold(state.current, dict.new(), _)
-    |> dict.to_list
-    |> list.map(to_dps(_, state))
-    |> list.sort(fn(a, b) { int.compare(a.damage, b.damage) })
-    |> list.reverse
+  }
+  |> list.fold(state.current, dict.new(), _)
+  |> dict.to_list
+  |> list.map(to_dps(_, state))
+  |> list.sort(fn(a, b) { int.compare(a.damage, b.damage) })
+  |> list.reverse
+}
 
-  let top =
-    meters
-    |> list.first
-    |> result.unwrap(Dps("", 0, 0, 0))
+fn view_top_dps(meters: List(Dps)) -> Dps {
+  meters
+  |> list.first
+  |> result.unwrap(Dps("", 0, 0, 0))
+}
 
-  // time since last message
-  let diff =
-    now
-    |> timestamp.difference(state.last_log, _)
+fn view_xph(state: State, time: Time) -> String {
+  let session =
+    timestamp.difference(state.xp_start, time.now) |> duration.to_seconds
+  let xph = int.to_float(state.xp_total) /. session *. 3600.0
+  " XP/h: " <> int.to_string(float.round(xph)) <> "\n\n"
+}
+
+fn view_loading(state: State, time: Time) -> String {
+  let time_since =
+    timestamp.difference(state.last_loading, time.now)
     |> duration.to_seconds
     |> float.round
+  " Loading: " <> int.to_string(time_since) <> "\n\n"
+}
 
-  // XP
+fn view_cds(state: State, time: Time) -> String {
+  let cds =
+    state.cds
+    |> dict.to_list
+    |> list.sort(fn(a, b) { string.compare(a.0, b.0) })
+    |> list.map(fn(cd) {
+      let left =
+        timestamp.difference({ cd.1 }.start, time.now)
+        |> duration.to_seconds
+        |> float.round
+        |> int.subtract({ cd.1 }.duration, _)
+        |> int.max(0)
 
-  let xph = {
-    let session =
-      timestamp.difference(state.xp_start, now) |> duration.to_seconds
-    let xph = int.to_float(state.xp_total) /. session *. 3600.0
-    " XP/h: " <> int.to_string(float.round(xph)) <> "\n\n"
-  }
-
-  // LOADING
-  let loading = {
-    let time_since =
-      timestamp.difference(state.last_loading, now)
-      |> duration.to_seconds
-      |> float.round
-    " Loading: " <> int.to_string(time_since) <> "\n\n"
-  }
-
-  // CDS
-
-  let cds = {
-    let cds =
-      state.cds
-      |> dict.to_list
-      |> list.sort(fn(a, b) { string.compare(a.0, b.0) })
-      |> list.map(fn(cd) {
-        let left =
-          timestamp.difference({ cd.1 }.start, now)
-          |> duration.to_seconds
-          |> float.round
-          |> int.subtract({ cd.1 }.duration, _)
-          |> int.max(0)
-
-        int.to_string(left) <> " <- " <> cd.0
-      })
-      |> string.join("\n")
-
-    " cooldowns:\n\n" <> cds
-  }
-
-  let title = " DPS | Last Update: " <> int.to_string(diff) <> "\n\n"
-  let meters_print =
-    meters
-    |> list.index_map(fn(dps, _idx) {
-      let done = int.to_float(dps.damage) /. int.to_float(top.damage) *. 10.0
-      let spaces = 10.0 -. done
-
-      "["
-      <> string.repeat("=", float.round(done *. 2.0))
-      <> string.repeat(" ", float.round(spaces *. 2.0))
-      <> "] "
-      <> string.repeat(
-        " ",
-        { top.dpr |> int.to_string |> string.length }
-          - { dps.dpr |> int.to_string |> string.length },
-      )
-      <> int.to_string(dps.dpr)
-      <> " : "
-      <> string.repeat(
-        " ",
-        { top.damage |> int.to_string |> string.length }
-          - { dps.damage |> int.to_string |> string.length },
-      )
-      <> int.to_string(dps.damage)
-      <> " : "
-      <> dps.source
-      <> "\n"
+      int.to_string(left) <> " <- " <> cd.0
     })
-    |> string.concat
+    |> string.join("\n")
 
+  " cooldowns:\n\n" <> cds
+}
+
+fn view_title(time: Time) -> String {
+  " DPS | Last Update: " <> int.to_string(time.diff) <> "\n\n"
+}
+
+fn view_meters(meters: List(Dps), top: Dps) -> String {
+  meters
+  |> list.index_map(fn(dps, _idx) {
+    let done = int.to_float(dps.damage) /. int.to_float(top.damage) *. 10.0
+    let spaces = 10.0 -. done
+
+    "["
+    <> string.repeat("=", float.round(done *. 2.0))
+    <> string.repeat(" ", float.round(spaces *. 2.0))
+    <> "] "
+    <> string.repeat(
+      " ",
+      { top.dpr |> int.to_string |> string.length }
+        - { dps.dpr |> int.to_string |> string.length },
+    )
+    <> int.to_string(dps.dpr)
+    <> " : "
+    <> string.repeat(
+      " ",
+      { top.damage |> int.to_string |> string.length }
+        - { dps.damage |> int.to_string |> string.length },
+    )
+    <> int.to_string(dps.damage)
+    <> " : "
+    <> dps.source
+    <> "\n"
+  })
+  |> string.concat
+}
+
+fn view_dps(state: State) -> String {
+  let time = time(state)
+  let meters = meters(state)
+  let top = view_top_dps(meters)
+  let xph = view_xph(state, time)
+  let loading = view_loading(state, time)
+  let cds = view_cds(state, time)
+  let title = view_title(time)
+  let meters_print = view_meters(meters, top)
   // OUTPUT
   [title, xph, loading, meters_print, "\n\n", cds]
   |> string.join("")
 }
+
+// HELPERS 
 
 type Dps {
   Dps(source: String, dps: Int, dpr: Int, damage: Int)
@@ -266,55 +279,19 @@ fn to_dps(i: #(String, Int), state: State) -> Dps {
   Dps(source: i.0, dps:, dpr:, damage: i.1)
 }
 
-fn print_svg(svg: List(String)) -> String {
-  list.flatten([
-    ["<svg id='dps-chart' width='500' height='200'>"],
-    svg,
-    ["</svg>"],
-  ])
-  |> string.concat
+fn time(state: State) -> Time {
+  let now = timestamp.system_time()
+  let diff =
+    now
+    |> timestamp.difference(state.last_log, _)
+    |> duration.to_seconds
+    |> float.round
+  Time(now:, diff:)
 }
 
-fn to_svg(dps: Dps, idx: Int) -> String {
-  let i = idx * 10
-  "<g class='bar'>"
-  <> {
-    "<rect x='0' y='"
-    <> int.to_string(i)
-    <> "' width='"
-    <> int.to_string(dps.damage)
-    <> "' height='10' fill='"
-    <> name_to_color(dps.source)
-    <> "'></rect>"
-  }
-  <> {
-    "  <text x='0' y='"
-    <> { i + 10 |> int.to_string() }
-    <> "'>"
-    <> dps.source
-    <> "</text>"
-  }
-  <> "</g>"
+type Time {
+  Time(now: Timestamp, diff: Int)
 }
-
-fn hash_string(name: String) -> Int {
-  name
-  |> string.to_graphemes
-  |> list.fold(0, fn(hash, char) {
-    hash |> int.multiply(31) |> int.add(to_ascii_int(char))
-  })
-}
-
-fn name_to_color(name: String) -> String {
-  let hue = name |> hash_string |> int.absolute_value |> io.debug
-  "hsl(" <> int.to_string(hue % 360) <> ", 70%, 50%)"
-}
-
-@external(erlang, "nwdeeps_ffi", "to_ascii_int")
-fn to_ascii_int(char: String) -> Int
 
 @external(erlang, "nwdeeps_ffi", "clear_terminal")
 fn clear_terminal() -> Nil
-
-@external(erlang, "nwdeeps_ffi", "top_terminal")
-fn top_terminal() -> Nil
