@@ -1,5 +1,5 @@
 import envoy
-import gleam/erlang/process.{type Subject}
+import gleam/erlang/process
 import gleam/io
 import gleam/result
 import nwdeeps/error
@@ -7,17 +7,11 @@ import nwdeeps/meter
 import nwdeeps/tail
 import shore
 
-fn print_dps(subj: Subject(meter.Event)) {
-  meter.print_dps() |> process.send(subj, _)
-  process.sleep(1000)
-  print_dps(subj)
-}
-
 pub fn main() {
   case run() {
     Ok(Nil) -> Nil
     Error(e) -> {
-      error.to_string(e)
+      error.to_string(e) |> io.println
       Nil
     }
   }
@@ -36,11 +30,11 @@ fn run() -> Result(Nil, error.Error) {
       view: meter.view,
       keybinds: shore.default_keybinds(),
       exit:,
+      redraw: shore.OnTimer(33),
     )
     |> shore.start
     |> result.map_error(error.Actor(_, "meter")),
   )
   use _ <- result.map(tail.start(meter, logs))
-  //meter |> print_dps |> process.start(True)
   exit |> process.receive_forever()
 }

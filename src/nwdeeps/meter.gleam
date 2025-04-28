@@ -221,19 +221,13 @@ fn view_meters(meters: List(Dps), top: Dps) -> shore.Node(Event) {
 
 fn view_meter(dps: Dps, top: Dps) -> shore.Node(Event) {
   // right align numbers
-  let dpr_right =
-    {
-      { top.dpr |> int.to_string |> string.length }
-      - { dps.dpr |> int.to_string |> string.length }
-    }
+  let align = fn(a, b) {
+    { a |> int.to_string |> string.length }
+    - { b |> int.to_string |> string.length }
     |> string.repeat(" ", _)
-  let damage_right =
-    {
-      { top.damage |> int.to_string |> string.length }
-      - { dps.damage |> int.to_string |> string.length }
-    }
-    |> string.repeat(" ", _)
-
+  }
+  let dpr_right = align(top.dpr, dps.dpr)
+  let damage_right = align(top.damage, dps.damage)
   [
     shore.Progress(30, top.damage, dps.damage, shore.Blue),
     shore.Text(dpr_right <> int.to_string(dps.dpr), None, None),
