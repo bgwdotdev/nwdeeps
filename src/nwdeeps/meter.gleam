@@ -53,15 +53,10 @@ pub fn init() -> #(State, List(fn() -> Event)) {
 
 pub opaque type Event {
   Log(log.Log)
-  PrintDps
 }
 
 pub fn new_log(event: log.Log) -> Event {
   Log(event)
-}
-
-pub fn print_dps() -> Event {
-  PrintDps
 }
 
 pub fn update(state: State, msg: Event) -> #(State, List(fn() -> Event)) {
@@ -139,21 +134,18 @@ pub fn update(state: State, msg: Event) -> #(State, List(fn() -> Event)) {
       }
       #(state, [])
     }
-
-    PrintDps -> {
-      let dps = view_dps(state)
-      //clear_terminal()
-      //io.print(dps)
-      //let _ = meters |> list.index_map(to_svg) |> print_svg |> io.debug
-      #(state, [])
-    }
   }
 }
 
 // VIEW
 
 pub fn view(state: State) -> shore.Node(Event) {
-  shore.Split(shore.Split1(view_dps(state)))
+  shore.Split(shore.Split2(
+    shore.Vertical,
+    shore.Ratio2(shore.Px(2), shore.Fill),
+    shore.Split1(shore.Div([shore.Text("", None, None)], shore.Col)),
+    shore.Split1(shore.Div(view_dps(state), shore.Col)),
+  ))
 }
 
 fn meters(state: State) -> List(Dps) {
@@ -180,7 +172,7 @@ fn view_xph(state: State, time: Time) -> shore.Node(Event) {
   let session =
     timestamp.difference(state.xp_start, time.now) |> duration.to_seconds
   let xph = int.to_float(state.xp_total) /. session *. 3600.0
-  { " XP/h: " <> int.to_string(float.round(xph)) } |> shore.Text(None, None)
+  { "XP/h: " <> int.to_string(float.round(xph)) } |> shore.Text(None, None)
 }
 
 fn view_loading(state: State, time: Time) -> shore.Node(Event) {
@@ -188,7 +180,7 @@ fn view_loading(state: State, time: Time) -> shore.Node(Event) {
     timestamp.difference(state.last_loading, time.now)
     |> duration.to_seconds
     |> float.round
-  { " Loading: " <> int.to_string(time_since) } |> shore.Text(None, None)
+  { "Loading: " <> int.to_string(time_since) } |> shore.Text(None, None)
 }
 
 fn view_cds(state: State, time: Time) -> shore.Node(Event) {
@@ -211,12 +203,12 @@ fn view_cds(state: State, time: Time) -> shore.Node(Event) {
 }
 
 fn view_title(time: Time) -> shore.Node(Event) {
-  { " DPS | Last Update: " <> int.to_string(time.diff) }
+  { "DPS | Last Update: " <> int.to_string(time.diff) }
   |> shore.Text(None, None)
 }
 
 fn view_meters(meters: List(Dps), top: Dps) -> shore.Node(Event) {
-  meters |> list.map(view_meter(_, top)) |> shore.Div(shore.Col)
+  meters |> list.map(view_meter(_, top)) |> shore.Div(shore.In)
 }
 
 fn view_meter(dps: Dps, top: Dps) -> shore.Node(Event) {
@@ -237,12 +229,12 @@ fn view_meter(dps: Dps, top: Dps) -> shore.Node(Event) {
   |> shore.Div(shore.Row)
 }
 
-fn view_dps(state: State) -> shore.Node(Event) {
+fn view_dps(state: State) -> List(shore.Node(Event)) {
   let time = time(state)
   let meters = meters(state)
   let top = top_dps(meters)
 
-  let div = [
+  [
     view_title(time),
     view_xph(state, time),
     view_loading(state, time),
@@ -253,7 +245,6 @@ fn view_dps(state: State) -> shore.Node(Event) {
     shore.KeyBind(key.Char("r"), Log(log.Reset)),
     shore.KeyBind(key.Char("c"), Log(log.ResetCd)),
   ]
-  shore.Div(div, shore.Col)
 }
 
 // HELPERS 
