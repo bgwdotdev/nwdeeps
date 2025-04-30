@@ -18,10 +18,9 @@ import shore/key
 
 pub opaque type State {
   State(
-    current: List(log.Log),
-    previous: Dict(String, List(log.Log)),
-    round_start: Timestamp,
-    last_log: Timestamp,
+    page: Page,
+    current: Combat,
+    previous: Dict(String, Combat),
     xp_start: Timestamp,
     xp_total: Int,
     cds: Dict(String, Cd),
@@ -29,17 +28,32 @@ pub opaque type State {
   )
 }
 
+type Combat {
+  Combat(logs: List(log.Log), round_start: Timestamp, last_log: Timestamp)
+}
+
+type Page {
+  ShowDps
+  ShowHistory
+  ShowLog(String, Combat)
+}
+
 type Cd {
   Cd(duration: Int, start: Timestamp)
 }
 
 pub fn init() -> #(State, List(fn() -> Event)) {
+  let current =
+    Combat(
+      logs: [],
+      round_start: timestamp.from_unix_seconds(0),
+      last_log: timestamp.from_unix_seconds(0),
+    )
   let state =
     State(
-      current: [],
+      page: ShowDps,
+      current:,
       previous: dict.new(),
-      round_start: timestamp.system_time(),
-      last_log: timestamp.system_time(),
       xp_start: timestamp.system_time(),
       xp_total: 0,
       cds: dict.new(),
@@ -53,6 +67,8 @@ pub fn init() -> #(State, List(fn() -> Event)) {
 
 pub opaque type Event {
   Log(log.Log)
+  SetPage(Page)
+  LoadLog(String)
 }
 
 pub fn new_log(event: log.Log) -> Event {
@@ -102,37 +118,46 @@ pub fn update(state: State, msg: Event) -> #(State, List(fn() -> Event)) {
           )
         log.Loading -> State(..state, last_loading: timestamp.system_time())
 
-        x -> {
-          let current_time = timestamp.system_time()
+        log.Attack(time:, ..) as x
+        | log.Damage(time:, ..) as x
+        | log.Initiative(time:, ..) as x -> {
           let diff =
-            current_time
-            |> timestamp.difference(state.last_log, _)
+            time
+            |> timestamp.difference(state.current.last_log, _)
             |> duration.to_seconds
             |> float.round
           case diff {
             diff if diff > 12 ->
               State(
                 ..state,
-                current: [],
+                current: Combat([], time, time),
                 previous: dict.insert(
                   state.previous,
-                  timestamp.to_rfc3339(current_time, duration.seconds(0)),
+                  timestamp.to_rfc3339(time, duration.seconds(0)),
                   state.current,
                 ),
-                round_start: timestamp.system_time(),
-                last_log: timestamp.system_time(),
               )
 
             _ ->
               State(
                 ..state,
-                current: [x, ..state.current],
-                last_log: timestamp.system_time(),
+                current: Combat(
+                  ..state.current,
+                  logs: [x, ..state.current.logs],
+                  last_log: time,
+                ),
               )
           }
         }
       }
       #(state, [])
+    }
+    SetPage(page) -> #(State(..state, page:), [])
+    LoadLog(log_name) -> {
+      case dict.get(state.previous, log_name) {
+        Ok(log) -> #(State(..state, page: ShowLog(log_name, log)), [])
+        Error(Nil) -> #(state, [])
+      }
     }
   }
 }
@@ -144,11 +169,23 @@ pub fn view(state: State) -> shore.Node(Event) {
     shore.Vertical,
     shore.Ratio2(shore.Px(2), shore.Fill),
     shore.Split1(shore.Div([shore.Text("", None, None)], shore.Col)),
-    shore.Split1(shore.Div(view_dps(state), shore.Col)),
+    shore.Split1(view_page(state)),
   ))
 }
 
-fn meters(state: State) -> List(Dps) {
+fn view_page(state: State) -> shore.Node(Event) {
+  case state.page {
+    ShowDps -> shore.Div(view_dps(state, meters(state.current)), shore.Col)
+    ShowHistory -> shore.Div(view_history(state), shore.Col)
+    ShowLog(log_name, log) ->
+      shore.Div(view_dps_log(log_name, meters(log)), shore.Col)
+  }
+}
+
+// ShowDps
+
+fn meters(combat: Combat) -> List(Dps) {
+  //fn meters(state: State) -> List(Dps) {
   fn(dps: dict.Dict(String, Int), log: log.Log) {
     case log {
       log.Damage(_, source, _, value, _) ->
@@ -161,9 +198,9 @@ fn meters(state: State) -> List(Dps) {
       _ -> dps
     }
   }
-  |> list.fold(state.current, dict.new(), _)
+  |> list.fold(combat.logs, dict.new(), _)
   |> dict.to_list
-  |> list.map(to_dps(_, state))
+  |> list.map(to_dps(_, combat.round_start, combat.last_log))
   |> list.sort(fn(a, b) { int.compare(a.damage, b.damage) })
   |> list.reverse
 }
@@ -229,9 +266,8 @@ fn view_meter(dps: Dps, top: Dps) -> shore.Node(Event) {
   |> shore.Div(shore.Row)
 }
 
-fn view_dps(state: State) -> List(shore.Node(Event)) {
+fn view_dps(state: State, meters: List(Dps)) -> List(shore.Node(Event)) {
   let time = time(state)
-  let meters = meters(state)
   let top = top_dps(meters)
 
   [
@@ -244,6 +280,36 @@ fn view_dps(state: State) -> List(shore.Node(Event)) {
     view_cds(state, time),
     shore.KeyBind(key.Char("r"), Log(log.Reset)),
     shore.KeyBind(key.Char("c"), Log(log.ResetCd)),
+    shore.KeyBind(key.Char("l"), SetPage(ShowHistory)),
+  ]
+}
+
+fn view_dps_log(title: String, meters: List(Dps)) -> List(shore.Node(Event)) {
+  let top = top_dps(meters)
+  [
+    shore.Text(title, Some(shore.Blue), None),
+    view_meters(meters, top),
+    shore.KeyBind(key.Char("l"), SetPage(ShowHistory)),
+  ]
+}
+
+// ShowHistory
+
+fn view_history(state: State) -> List(shore.Node(Event)) {
+  [
+    dict.to_list(state.previous)
+      |> list.sort(fn(a, b) { string.compare(b.0, a.0) })
+      |> list.index_map(fn(x, idx) { [int.to_string(idx), x.0] })
+      |> list.prepend(["log", "time"])
+      |> shore.Table(50, _),
+    shore.KeyBind(key.Char("l"), SetPage(ShowDps)),
+    dict.to_list(state.previous)
+      |> list.sort(fn(a, b) { string.compare(b.0, a.0) })
+      |> list.take(10)
+      |> list.index_map(fn(x, idx) {
+        shore.KeyBind(key.Char(int.to_string(idx)), LoadLog(x.0))
+      })
+      |> shore.Div(shore.Col),
   ]
 }
 
@@ -253,9 +319,13 @@ type Dps {
   Dps(source: String, dps: Int, dpr: Int, damage: Int)
 }
 
-fn to_dps(i: #(String, Int), state: State) -> Dps {
+fn to_dps(
+  i: #(String, Int),
+  round_start: Timestamp,
+  round_end: Timestamp,
+) -> Dps {
   let fight_duration =
-    timestamp.difference(state.round_start, state.last_log)
+    timestamp.difference(round_start, round_end)
     |> duration.to_seconds
   let dps = i.1 / float.truncate(fight_duration)
   let dpr = dps * 6
@@ -272,7 +342,7 @@ fn time(state: State) -> Time {
   let now = timestamp.system_time()
   let diff =
     now
-    |> timestamp.difference(state.last_log, _)
+    |> timestamp.difference(state.current.last_log, _)
     |> duration.to_seconds
     |> float.round
   Time(now:, diff:)

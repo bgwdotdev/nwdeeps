@@ -4,19 +4,32 @@ import gleam/option.{type Option, None, Some}
 import gleam/regexp
 import gleam/result
 import gleam/string
+import gleam/time/timestamp.{type Timestamp}
 import nwdeeps/error
 import nwdeeps/parse
 
 pub type Log {
-  Attack(time: String, source: String, target: String, hit: Bool, roll: String)
-  Damage(time: String, source: String, target: String, value: Int, roll: String)
-  Initiative(time: String, source: String, value: Int, roll: String)
-  Experience(time: String, value: Int)
+  Attack(
+    time: Timestamp,
+    source: String,
+    target: String,
+    hit: Bool,
+    roll: String,
+  )
+  Damage(
+    time: Timestamp,
+    source: String,
+    target: String,
+    value: Int,
+    roll: String,
+  )
+  Initiative(time: Timestamp, source: String, value: Int, roll: String)
+  Experience(time: Timestamp, value: Int)
   Reset
   ResetCd
-  ActiveCd(time: String, active: String, seconds: Int)
+  ActiveCd(time: Timestamp, active: String, seconds: Int)
   DoneResting
-  Charge(time: String, active: String)
+  Charge(time: Timestamp, active: String)
   Loading
 }
 
@@ -62,17 +75,11 @@ fn match_to_event(
   case parse {
     parse.Attack ->
       case match.submatches {
-        [
-          Some(_date),
-          Some(time),
-          Some(source),
-          Some(target),
-          Some(hit),
-          Some(roll),
-        ] ->
-          hit
-          |> hit_to_bool
-          |> result.map(fn(hit) { Attack(time:, source:, target:, hit:, roll:) })
+        [Some(time), Some(source), Some(target), Some(hit), Some(roll)] -> {
+          use time <- result.try(parse.header(time))
+          use hit <- result.try(hit_to_bool(hit))
+          Attack(time:, source:, target:, hit:, roll:) |> Ok
+        }
         x ->
           Error(error.RegexpScanToEvent(
             event: string.inspect(parse),
@@ -82,20 +89,15 @@ fn match_to_event(
       }
     parse.Damage ->
       case match.submatches {
-        [
-          Some(_date),
-          Some(time),
-          Some(source),
-          Some(target),
-          Some(value),
-          Some(roll),
-        ] ->
-          value
-          |> int.parse
-          |> result.map(fn(value) {
-            Damage(time:, source:, target:, value:, roll:)
-          })
-          |> result.map_error(fn(_) { error.UnknownValueType(value) })
+        [Some(time), Some(source), Some(target), Some(value), Some(roll)] -> {
+          use time <- result.try(parse.header(time))
+          use value <- result.try(
+            value
+            |> int.parse
+            |> result.map_error(fn(_) { error.UnknownValueType(value) }),
+          )
+          Damage(time:, source:, target:, value:, roll:) |> Ok
+        }
         x ->
           Error(error.RegexpScanToEvent(
             event: string.inspect(parse),
@@ -105,11 +107,15 @@ fn match_to_event(
       }
     parse.Initiative ->
       case match.submatches {
-        [Some(_date), Some(time), Some(source), Some(value), Some(roll)] ->
-          value
-          |> int.parse
-          |> result.map(fn(value) { Initiative(time:, source:, value:, roll:) })
-          |> result.map_error(fn(_) { error.UnknownValueType(value) })
+        [Some(time), Some(source), Some(value), Some(roll)] -> {
+          use time <- result.try(parse.header(time))
+          use value <- result.try(
+            value
+            |> int.parse
+            |> result.map_error(fn(_) { error.UnknownValueType(value) }),
+          )
+          Initiative(time:, source:, value:, roll:) |> Ok
+        }
         x ->
           Error(error.RegexpScanToEvent(
             event: string.inspect(parse),
@@ -119,11 +125,15 @@ fn match_to_event(
       }
     parse.Experience -> {
       case match.submatches {
-        [Some(_date), Some(time), Some(value)] ->
-          value
-          |> int.parse
-          |> result.map(fn(value) { Experience(time:, value:) })
-          |> result.map_error(fn(_) { error.UnknownValueType(value) })
+        [Some(time), Some(value)] -> {
+          use time <- result.try(parse.header(time))
+          use value <- result.try(
+            value
+            |> int.parse
+            |> result.map_error(fn(_) { error.UnknownValueType(value) }),
+          )
+          Experience(time:, value:) |> Ok
+        }
         x ->
           Error(error.RegexpScanToEvent(
             event: string.inspect(parse),
@@ -134,28 +144,43 @@ fn match_to_event(
     }
     parse.ActiveCd -> {
       case match.submatches {
-        [Some(_date), Some(time), Some(active), Some(minutes), Some(seconds)] -> {
+        [Some(time), Some(active), Some(minutes), Some(seconds)] -> {
           {
-            use minutes <- result.try(minutes |> int.parse)
-            use seconds <- result.map(seconds |> int.parse)
+            use time <- result.try(parse.header(time))
+            use minutes <- result.try(
+              minutes
+              |> int.parse
+              |> result.map_error(fn(_) { error.UnknownValueType(minutes) }),
+            )
+            use seconds <- result.map(
+              seconds
+              |> int.parse
+              |> result.map_error(fn(_) { error.UnknownValueType(seconds) }),
+            )
             ActiveCd(time:, active:, seconds: minutes * 60 + seconds)
           }
           |> result.map_error(fn(_) {
             error.UnknownValueType(minutes <> seconds)
           })
         }
-        [Some(_date), Some(time), Some(active), Some(minutes)] ->
-          minutes
-          |> int.parse
-          |> result.map(fn(minutes) {
-            ActiveCd(time:, active:, seconds: minutes * 60)
-          })
-          |> result.map_error(fn(_) { error.UnknownValueType(minutes) })
-        [Some(_date), Some(time), Some(active), None, Some(seconds)] ->
-          seconds
-          |> int.parse
-          |> result.map(fn(seconds) { ActiveCd(time:, active:, seconds:) })
-          |> result.map_error(fn(_) { error.UnknownValueType(seconds) })
+        [Some(time), Some(active), Some(minutes)] -> {
+          use time <- result.try(parse.header(time))
+          use minutes <- result.try(
+            minutes
+            |> int.parse
+            |> result.map_error(fn(_) { error.UnknownValueType(minutes) }),
+          )
+          ActiveCd(time:, active:, seconds: minutes * 60) |> Ok
+        }
+        [Some(time), Some(active), None, Some(seconds)] -> {
+          use time <- result.try(parse.header(time))
+          use seconds <- result.try(
+            seconds
+            |> int.parse
+            |> result.map_error(fn(_) { error.UnknownValueType(seconds) }),
+          )
+          ActiveCd(time:, active:, seconds:) |> Ok
+        }
         x ->
           Error(error.RegexpScanToEvent(
             event: string.inspect(parse),
@@ -169,7 +194,10 @@ fn match_to_event(
     parse.DoneResting -> Ok(DoneResting)
     parse.Charge ->
       case match.submatches {
-        [Some(_date), Some(time), Some(active)] -> Ok(Charge(time:, active:))
+        [Some(time), Some(active)] -> {
+          use time <- result.try(parse.header(time))
+          Charge(time:, active:) |> Ok
+        }
         x ->
           Error(error.RegexpScanToEvent(
             event: string.inspect(parse),
@@ -180,7 +208,7 @@ fn match_to_event(
 
     parse.Loading ->
       case match.submatches {
-        [Some(_date), Some(_time)] -> Ok(Loading)
+        [Some(_time)] -> Ok(Loading)
         x ->
           Error(error.RegexpScanToEvent(
             event: string.inspect(parse),

@@ -12,6 +12,7 @@ pub type Error {
   UnknownValueType(String)
   File(FileReason)
   LogDirEmpty(directory: String)
+  Header(error: String)
 }
 
 pub fn to_string(error: Error) {

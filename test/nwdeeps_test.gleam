@@ -1,6 +1,9 @@
 import gleam/io
 import gleam/list
 import gleam/regexp
+import gleam/result
+import gleam/time/calendar
+import gleam/time/timestamp
 import gleeunit
 import gleeunit/should
 import nwdeeps/parse
@@ -11,6 +14,18 @@ pub fn main() {
 
 type Test {
   Test(expect: parse.Event, text: String)
+}
+
+pub fn header_parse_test() {
+  let text = "Tue Feb  4 22:11:40"
+  let actual =
+    text
+    |> parse.header
+    |> result.map(timestamp.to_calendar(_, calendar.utc_offset))
+  let date = calendar.Date(2025, calendar.February, 4)
+  let time = calendar.TimeOfDay(22, 11, 40, 0)
+  let expect = Ok(#(date, time))
+  should.equal(actual, expect)
 }
 
 const tests = [
