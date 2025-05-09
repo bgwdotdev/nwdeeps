@@ -165,20 +165,65 @@ pub fn update(state: State, msg: Event) -> #(State, List(fn() -> Event)) {
 // VIEW
 
 pub fn view(state: State) -> shore.Node(Event) {
-  shore.Split(shore.Split2(
-    shore.Vertical,
-    shore.Ratio2(shore.Px(2), shore.Fill),
-    shore.Split1(shore.Div([shore.Text("", None, None)], shore.Col)),
-    shore.Split1(view_page(state)),
-  ))
+  let time = time(state)
+  shore.Layouts(
+    shore.Grid(
+      gap: 0,
+      rows: [shore.Px(5), shore.Fill, shore.Px(1)],
+      columns: [shore.Pct(66), shore.Fill],
+      cells: [
+        shore.Cell(content: view_page(state), row: #(0, 1), col: #(0, 0)),
+        shore.Cell(
+          content: shore.Box(
+            [
+              shore.TableKV(40, [
+                view_update(time),
+                view_xph(state, time),
+                view_loading(state, time),
+              ]),
+            ],
+            Some("stats"),
+          ),
+          row: #(0, 0),
+          col: #(1, 1),
+        ),
+        shore.Cell(
+          content: shore.Box([view_cds(state, time)], Some("cooldowns")),
+          row: #(1, 1),
+          col: #(1, 1),
+        ),
+        shore.Cell(
+          content: shore.Bar2(
+            shore.Blue,
+            shore.DivRow(view_page_keybinds(state)),
+          ),
+          row: #(2, 2),
+          col: #(0, 1),
+        ),
+      ],
+    ),
+  )
 }
 
 fn view_page(state: State) -> shore.Node(Event) {
   case state.page {
-    ShowDps -> shore.Div(view_dps(state, meters(state.current)), shore.Col)
-    ShowHistory -> shore.Div(view_history(state), shore.Col)
-    ShowLog(log_name, log) ->
-      shore.Div(view_dps_log(log_name, meters(log)), shore.Col)
+    ShowDps -> {
+      view_dps(meters(state.current))
+    }
+    ShowHistory -> {
+      shore.Box(view_history(state), Some("logs"))
+    }
+    ShowLog(log_name, log) -> {
+      shore.Box(view_dps_log(log_name, meters(log)), Some("DPS: " <> log_name))
+    }
+  }
+}
+
+fn view_page_keybinds(state: State) -> List(shore.Node(Event)) {
+  case state.page {
+    ShowDps -> view_dps_keybinds()
+    ShowHistory -> view_history_keybinds()
+    ShowLog(..) -> view_log_keybinds()
   }
 }
 
@@ -205,19 +250,19 @@ fn meters(combat: Combat) -> List(Dps) {
   |> list.reverse
 }
 
-fn view_xph(state: State, time: Time) -> shore.Node(Event) {
+fn view_xph(state: State, time: Time) -> List(String) {
   let session =
     timestamp.difference(state.xp_start, time.now) |> duration.to_seconds
   let xph = int.to_float(state.xp_total) /. session *. 3600.0
-  { "XP/h: " <> int.to_string(float.round(xph)) } |> shore.Text(None, None)
+  ["XP/h", int.to_string(float.round(xph))]
 }
 
-fn view_loading(state: State, time: Time) -> shore.Node(Event) {
+fn view_loading(state: State, time: Time) -> List(String) {
   let time_since =
     timestamp.difference(state.last_loading, time.now)
     |> duration.to_seconds
     |> float.round
-  { "Loading: " <> int.to_string(time_since) } |> shore.Text(None, None)
+  ["Loading", int.to_string(time_since)]
 }
 
 fn view_cds(state: State, time: Time) -> shore.Node(Event) {
@@ -239,16 +284,23 @@ fn view_cds(state: State, time: Time) -> shore.Node(Event) {
   [["cooldown", "ability"], ..cds] |> shore.Table(40, _)
 }
 
-fn view_title(time: Time) -> shore.Node(Event) {
-  { "DPS | Last Update: " <> int.to_string(time.diff) }
-  |> shore.Text(None, None)
+fn view_update(time: Time) -> List(String) {
+  ["Last Update", int.to_string(time.diff)]
 }
 
 fn view_meters(meters: List(Dps), top: Dps) -> shore.Node(Event) {
-  meters |> list.map(view_meter(_, top)) |> shore.Div(shore.In)
+  shore.Grid(
+    gap: 0,
+    rows: list.repeat(shore.Px(1), list.length(meters)),
+    columns: [shore.Fill, shore.Px(3), shore.Px(7), shore.Px(7), shore.Px(20)],
+    cells: meters
+      |> list.index_map(fn(dps, idx) { view_meter(idx, dps, top) })
+      |> list.flatten,
+  )
+  |> shore.Layouts
 }
 
-fn view_meter(dps: Dps, top: Dps) -> shore.Node(Event) {
+fn view_meter(row: Int, dps: Dps, top: Dps) -> List(shore.Cell(Event)) {
   // right align numbers
   let align = fn(a, b) {
     { a |> int.to_string |> string.length }
@@ -258,38 +310,55 @@ fn view_meter(dps: Dps, top: Dps) -> shore.Node(Event) {
   let dpr_right = align(top.dpr, dps.dpr)
   let damage_right = align(top.damage, dps.damage)
   [
-    shore.Progress(30, top.damage, dps.damage, shore.Blue),
-    shore.Text(dpr_right <> int.to_string(dps.dpr), None, None),
-    shore.Text(damage_right <> int.to_string(dps.damage), None, None),
-    shore.Text(dps.source, None, None),
+    shore.Cell(
+      row: #(row, row),
+      col: #(0, 0),
+      content: shore.Progress(shore.Fill, top.damage, dps.damage, shore.Blue),
+    ),
+    shore.Cell(
+      row: #(row, row),
+      col: #(2, 2),
+      content: shore.Text(dpr_right <> int.to_string(dps.dpr), None, None),
+    ),
+    shore.Cell(
+      row: #(row, row),
+      col: #(3, 3),
+      content: shore.Text(damage_right <> int.to_string(dps.damage), None, None),
+    ),
+    shore.Cell(
+      row: #(row, row),
+      col: #(4, 4),
+      content: shore.Text(dps.source, None, None),
+    ),
   ]
-  |> shore.Div(shore.Row)
 }
 
-fn view_dps(state: State, meters: List(Dps)) -> List(shore.Node(Event)) {
-  let time = time(state)
+fn view_dps(meters: List(Dps)) -> shore.Node(Event) {
   let top = top_dps(meters)
-
-  [
-    view_title(time),
-    view_xph(state, time),
-    view_loading(state, time),
-    shore.BR,
-    view_meters(meters, top),
-    shore.BR,
-    view_cds(state, time),
-    shore.KeyBind(key.Char("r"), Log(log.Reset)),
-    shore.KeyBind(key.Char("c"), Log(log.ResetCd)),
-    shore.KeyBind(key.Char("l"), SetPage(ShowHistory)),
-  ]
+  shore.Box([view_meters(meters, top)], Some("DPS"))
 }
 
 fn view_dps_log(title: String, meters: List(Dps)) -> List(shore.Node(Event)) {
   let top = top_dps(meters)
+  [shore.Text(title, Some(shore.Blue), None), view_meters(meters, top)]
+}
+
+fn view_dps_keybinds() -> List(shore.Node(Event)) {
   [
-    shore.Text(title, Some(shore.Blue), None),
-    view_meters(meters, top),
-    shore.KeyBind(key.Char("l"), SetPage(ShowHistory)),
+    shore.Button("l: logs", key.Char("l"), SetPage(ShowHistory)),
+    shore.Button("r: reset xp", key.Char("r"), Log(log.Reset)),
+    shore.Button("c: reset cd", key.Char("c"), Log(log.ResetCd)),
+  ]
+}
+
+fn view_log_keybinds() -> List(shore.Node(Event)) {
+  [shore.Button("l: logs", key.Char("l"), SetPage(ShowHistory))]
+}
+
+fn view_history_keybinds() -> List(shore.Node(Event)) {
+  [
+    shore.Button("l: dps", key.Char("l"), SetPage(ShowDps)),
+    shore.Text("  0-9: log", Some(shore.Black), Some(shore.Blue)),
   ]
 }
 
@@ -302,14 +371,13 @@ fn view_history(state: State) -> List(shore.Node(Event)) {
       |> list.index_map(fn(x, idx) { [int.to_string(idx), x.0] })
       |> list.prepend(["log", "time"])
       |> shore.Table(50, _),
-    shore.KeyBind(key.Char("l"), SetPage(ShowDps)),
     dict.to_list(state.previous)
       |> list.sort(fn(a, b) { string.compare(b.0, a.0) })
       |> list.take(10)
       |> list.index_map(fn(x, idx) {
         shore.KeyBind(key.Char(int.to_string(idx)), LoadLog(x.0))
       })
-      |> shore.Div(shore.Col),
+      |> shore.DivCol,
   ]
 }
 
