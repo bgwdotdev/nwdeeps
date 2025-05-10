@@ -7,6 +7,7 @@ pub type FileReason
 pub type Error {
   LogPath(Nil)
   Actor(error: actor.StartError, actor: String)
+  RegexpNotImplemented(parse: String)
   RegexpScanToEvent(event: String, line: String, parsed: List(Option(String)))
   UnknownHitType(String)
   UnknownValueType(String)
@@ -22,6 +23,6 @@ pub fn to_string(error: Error) {
 
     Actor(error, actor) ->
       "failed to start: " <> actor <> " reason: " <> string.inspect(error)
-    _ -> todo
+    x -> "unexpected error to print: " <> string.inspect(x)
   }
 }

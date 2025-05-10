@@ -116,7 +116,7 @@ fn do_parse_date(str: String, acc: String) -> Parser(Int) {
     Ok(#(" ", xs)) ->
       case int.parse(acc) {
         Ok(acc) -> ParseOk(acc, xs)
-        Error(e) -> ParseError("date acc: " <> str)
+        Error(Nil) -> ParseError("date acc: " <> str)
       }
     Ok(#(x, xs)) -> do_parse_date(xs, acc <> x)
     Error(e) -> ParseError(string.inspect(e))

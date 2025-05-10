@@ -10,7 +10,7 @@ packages = [
   { name = "gleam_stdlib", version = "0.54.0", build_tools = ["gleam"], requirements = [], otp_app = "gleam_stdlib", source = "hex", outer_checksum = "723BA61A2BAE8D67406E59DD88CEA1B3C3F266FC8D70F64BE9FEC81B4505B927" },
   { name = "gleam_time", version = "1.2.0", build_tools = ["gleam"], requirements = ["gleam_stdlib"], otp_app = "gleam_time", source = "hex", outer_checksum = "D71F1AFF7FEB534FF55E5DC58E534E9201BA75A444619788A2E4DEA4EBD87D16" },
   { name = "gleeunit", version = "1.3.0", build_tools = ["gleam"], requirements = ["gleam_stdlib"], otp_app = "gleeunit", source = "hex", outer_checksum = "0E6C83834BA65EDCAAF4FE4FB94AC697D9262D83E6F58A750D63C9F6C8A9D9FF" },
-  { name = "shore", version = "1.0.0", build_tools = ["gleam"], requirements = ["gleam_erlang", "gleam_otp", "gleam_stdlib"], source = "local", path = "../shore" },
+  { name = "shore", version = "1.0.0", build_tools = ["gleam"], requirements = ["gleam_erlang", "gleam_otp", "gleam_stdlib"], source = "git", repo = "https://git.bgw.dev/bgw/shore.git", commit = "229036c981c88ee70f58e44b4587c9f4c46e33df" },
   { name = "simplifile", version = "2.2.0", build_tools = ["gleam"], requirements = ["filepath", "gleam_stdlib"], otp_app = "simplifile", source = "hex", outer_checksum = "0DFABEF7DC7A9E2FF4BB27B108034E60C81BEBFCB7AB816B9E7E18ED4503ACD8" },
 ]
 
@@ -22,5 +22,5 @@ gleam_regexp = { version = ">= 1.1.0 and < 2.0.0" }
 gleam_stdlib = { version = ">= 0.44.0 and < 2.0.0" }
 gleam_time = { version = ">= 1.2.0 and < 2.0.0" }
 gleeunit = { version = ">= 1.0.0 and < 2.0.0" }
-shore = { path = "../shore" }
+shore = { git = "https://git.bgw.dev/bgw/shore.git", ref = "229036c981c88ee70f58e44b4587c9f4c46e33df" }
 simplifile = { version = ">= 2.2.0 and < 3.0.0" }

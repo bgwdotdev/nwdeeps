@@ -2,6 +2,10 @@
 
 A dps meter and cooldown tracker for neverwinter nights, specifically targeted at the Arelith server.
 
+## Dependencies
+
+* erlang v28
+
 ## Usage
 
 You must turn on all logging inside neverwinter nights, this can be done by:
@@ -10,8 +14,6 @@ You must turn on all logging inside neverwinter nights, this can be done by:
 * Game Options
 * Game
 * Under "Logging", enable "Game Log Chat All"
-
-To run the dps meter, you must install erlang (currently v27).
 
 Find your log folder, for example:
 

@@ -217,7 +217,10 @@ fn match_to_event(
           ))
       }
 
-    e -> todo as { "event not implemented yet: " <> string.inspect(e) }
+    e ->
+      Error(error.RegexpNotImplemented(
+        "event not implemented yet: " <> string.inspect(e),
+      ))
   }
 }
 

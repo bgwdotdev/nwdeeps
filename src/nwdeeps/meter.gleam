@@ -1,15 +1,12 @@
 import gleam/dict.{type Dict}
 import gleam/float
 import gleam/int
-import gleam/io
 import gleam/list
-import gleam/option.{type Option, None, Some}
-import gleam/otp/actor
+import gleam/option.{None, Some}
 import gleam/result
 import gleam/string
 import gleam/time/duration
 import gleam/time/timestamp.{type Timestamp}
-import nwdeeps/error
 import nwdeeps/log
 import shore
 import shore/key
