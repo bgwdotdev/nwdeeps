@@ -10,6 +10,9 @@ import gleam/time/timestamp.{type Timestamp}
 import nwdeeps/log
 import shore
 import shore/key
+import shore/layout
+import shore/style
+import shore/ui
 
 // MODEL 
 
@@ -163,42 +166,38 @@ pub fn update(state: State, msg: Event) -> #(State, List(fn() -> Event)) {
 
 pub fn view(state: State) -> shore.Node(Event) {
   let time = time(state)
-  shore.Layouts(
-    shore.Grid(
-      gap: 0,
-      rows: [shore.Px(5), shore.Fill, shore.Px(1)],
-      columns: [shore.Pct(66), shore.Fill],
-      cells: [
-        shore.Cell(content: view_page(state), row: #(0, 1), col: #(0, 0)),
-        shore.Cell(
-          content: shore.Box(
-            [
-              shore.TableKV(40, [
-                view_update(time),
-                view_xph(state, time),
-                view_loading(state, time),
-              ]),
-            ],
-            Some("stats"),
-          ),
-          row: #(0, 0),
-          col: #(1, 1),
+  layout.grid(
+    gap: 0,
+    rows: [style.Px(5), style.Fill, style.Fill, style.Px(1)],
+    cols: [style.Pct(66), style.Fill],
+    cells: [
+      layout.cell(content: view_page(state), row: #(0, 1), col: #(0, 0)),
+      layout.cell(content: view_graph(state.current), row: #(2, 2), col: #(0, 0)),
+      layout.cell(
+        content: ui.box(
+          [
+            ui.table_kv(style.Px(40), [
+              view_update(time),
+              view_xph(state, time),
+              view_loading(state, time),
+            ]),
+          ],
+          Some("stats"),
         ),
-        shore.Cell(
-          content: shore.Box([view_cds(state, time)], Some("cooldowns")),
-          row: #(1, 1),
-          col: #(1, 1),
-        ),
-        shore.Cell(
-          content: shore.Bar2(
-            shore.Blue,
-            shore.DivRow(view_page_keybinds(state)),
-          ),
-          row: #(2, 2),
-          col: #(0, 1),
-        ),
-      ],
-    ),
+        row: #(0, 0),
+        col: #(1, 1),
+      ),
+      layout.cell(
+        content: ui.box([view_cds(state, time)], Some("cooldowns")),
+        row: #(1, 2),
+        col: #(1, 1),
+      ),
+      layout.cell(
+        content: ui.bar2(style.Blue, ui.row(view_page_keybinds(state))),
+        row: #(3, 3),
+        col: #(0, 1),
+      ),
+    ],
   )
 }
 
@@ -208,10 +207,10 @@ fn view_page(state: State) -> shore.Node(Event) {
       view_dps(meters(state.current))
     }
     ShowHistory -> {
-      shore.Box(view_history(state), Some("logs"))
+      ui.box(view_history(state), Some("logs"))
     }
     ShowLog(log_name, log) -> {
-      shore.Box(view_dps_log(log_name, meters(log)), Some("DPS: " <> log_name))
+      ui.box(view_dps_log(log_name, meters(log)), Some("DPS: " <> log_name))
     }
   }
 }
@@ -227,7 +226,6 @@ fn view_page_keybinds(state: State) -> List(shore.Node(Event)) {
 // ShowDps
 
 fn meters(combat: Combat) -> List(Dps) {
-  //fn meters(state: State) -> List(Dps) {
   fn(dps: dict.Dict(String, Int), log: log.Log) {
     case log {
       log.Damage(_, source, _, value, _) ->
@@ -278,7 +276,7 @@ fn view_cds(state: State, time: Time) -> shore.Node(Event) {
       [int.to_string(left), cd.0]
     })
 
-  [["cooldown", "ability"], ..cds] |> shore.Table(40, _)
+  [["cooldown", "ability"], ..cds] |> ui.table(style.Px(40), _)
 }
 
 fn view_update(time: Time) -> List(String) {
@@ -286,18 +284,17 @@ fn view_update(time: Time) -> List(String) {
 }
 
 fn view_meters(meters: List(Dps), top: Dps) -> shore.Node(Event) {
-  shore.Grid(
+  layout.grid(
     gap: 0,
-    rows: list.repeat(shore.Px(1), list.length(meters)),
-    columns: [shore.Fill, shore.Px(3), shore.Px(7), shore.Px(7), shore.Px(20)],
+    rows: list.repeat(style.Px(1), list.length(meters)),
+    cols: [style.Fill, style.Px(3), style.Px(7), style.Px(7), style.Px(20)],
     cells: meters
       |> list.index_map(fn(dps, idx) { view_meter(idx, dps, top) })
       |> list.flatten,
   )
-  |> shore.Layouts
 }
 
-fn view_meter(row: Int, dps: Dps, top: Dps) -> List(shore.Cell(Event)) {
+fn view_meter(row: Int, dps: Dps, top: Dps) -> List(layout.Cell(Event)) {
   // right align numbers
   let align = fn(a, b) {
     { a |> int.to_string |> string.length }
@@ -307,55 +304,51 @@ fn view_meter(row: Int, dps: Dps, top: Dps) -> List(shore.Cell(Event)) {
   let dpr_right = align(top.dpr, dps.dpr)
   let damage_right = align(top.damage, dps.damage)
   [
-    shore.Cell(
+    layout.cell(
       row: #(row, row),
       col: #(0, 0),
-      content: shore.Progress(shore.Fill, top.damage, dps.damage, shore.Blue),
+      content: ui.progress(style.Fill, top.damage, dps.damage, style.Blue),
     ),
-    shore.Cell(
+    layout.cell(
       row: #(row, row),
       col: #(2, 2),
-      content: shore.Text(dpr_right <> int.to_string(dps.dpr), None, None),
+      content: ui.text(dpr_right <> int.to_string(dps.dpr)),
     ),
-    shore.Cell(
+    layout.cell(
       row: #(row, row),
       col: #(3, 3),
-      content: shore.Text(damage_right <> int.to_string(dps.damage), None, None),
+      content: ui.text(damage_right <> int.to_string(dps.damage)),
     ),
-    shore.Cell(
-      row: #(row, row),
-      col: #(4, 4),
-      content: shore.Text(dps.source, None, None),
-    ),
+    layout.cell(row: #(row, row), col: #(4, 4), content: ui.text(dps.source)),
   ]
 }
 
 fn view_dps(meters: List(Dps)) -> shore.Node(Event) {
   let top = top_dps(meters)
-  shore.Box([view_meters(meters, top)], Some("DPS"))
+  ui.box([view_meters(meters, top)], Some("DPS"))
 }
 
 fn view_dps_log(title: String, meters: List(Dps)) -> List(shore.Node(Event)) {
   let top = top_dps(meters)
-  [shore.Text(title, Some(shore.Blue), None), view_meters(meters, top)]
+  [ui.text_styled(title, Some(style.Blue), None), view_meters(meters, top)]
 }
 
 fn view_dps_keybinds() -> List(shore.Node(Event)) {
   [
-    shore.Button("l: logs", key.Char("l"), SetPage(ShowHistory)),
-    shore.Button("r: reset xp", key.Char("r"), Log(log.Reset)),
-    shore.Button("c: reset cd", key.Char("c"), Log(log.ResetCd)),
+    ui.button("l: logs", key.Char("l"), SetPage(ShowHistory)),
+    ui.button("r: reset xp", key.Char("r"), Log(log.Reset)),
+    ui.button("c: reset cd", key.Char("c"), Log(log.ResetCd)),
   ]
 }
 
 fn view_log_keybinds() -> List(shore.Node(Event)) {
-  [shore.Button("l: logs", key.Char("l"), SetPage(ShowHistory))]
+  [ui.button("l: logs", key.Char("l"), SetPage(ShowHistory))]
 }
 
 fn view_history_keybinds() -> List(shore.Node(Event)) {
   [
-    shore.Button("l: dps", key.Char("l"), SetPage(ShowDps)),
-    shore.Text("  0-9: log", Some(shore.Black), Some(shore.Blue)),
+    ui.button("l: dps", key.Char("l"), SetPage(ShowDps)),
+    ui.text_styled("  0-9: log", Some(style.Black), Some(style.Blue)),
   ]
 }
 
@@ -367,14 +360,14 @@ fn view_history(state: State) -> List(shore.Node(Event)) {
       |> list.sort(fn(a, b) { string.compare(b.0, a.0) })
       |> list.index_map(fn(x, idx) { [int.to_string(idx), x.0] })
       |> list.prepend(["log", "time"])
-      |> shore.Table(50, _),
+      |> ui.table(style.Px(50), _),
     dict.to_list(state.previous)
       |> list.sort(fn(a, b) { string.compare(b.0, a.0) })
       |> list.take(10)
       |> list.index_map(fn(x, idx) {
-        shore.KeyBind(key.Char(int.to_string(idx)), LoadLog(x.0))
+        ui.keybind(key.Char(int.to_string(idx)), LoadLog(x.0))
       })
-      |> shore.DivCol,
+      |> ui.col,
   ]
 }
 
@@ -415,4 +408,39 @@ fn time(state: State) -> Time {
 
 type Time {
   Time(now: Timestamp, diff: Int)
+}
+
+// DPS GRAPH
+
+fn graph(combat: Combat) -> List(Float) {
+  list.filter_map(combat.logs, fn(log) {
+    case log {
+      log.Damage(source: "Haeli", value:, ..) -> Ok(value |> int.to_float)
+      _ -> Error(Nil)
+    }
+  })
+}
+
+type Sample {
+  Sample(timestamp: Timestamp, dps: List(Float))
+}
+
+fn graph2(combat: Combat) -> List(Float) {
+  let sample = Sample(timestamp.from_unix_seconds(0), [])
+  let sample =
+    list.fold(combat.logs, sample, fn(acc, log) {
+      case log {
+        log.Damage(source: "Haeli", time:, value:, ..) -> {
+          [value |> int.to_float, ..acc.dps]
+          acc
+        }
+        _ -> acc
+      }
+    })
+  sample.dps
+}
+
+fn view_graph(combat: Combat) -> shore.Node(Event) {
+  let g = combat |> graph |> ui.graph(style.Fill, style.Fill, _)
+  ui.box([g], Some("curve"))
 }

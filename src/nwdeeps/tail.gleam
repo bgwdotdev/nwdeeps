@@ -61,7 +61,7 @@ fn loop(state: State) {
       line
       |> log.parse
       |> option.map(meter.new_log)
-      |> option.map(shore.cmd)
+      |> option.map(shore.send)
       |> option.map(process.send(state.subj, _))
       State(..state, last_update: 0)
       |> loop

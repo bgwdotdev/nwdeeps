@@ -24,13 +24,13 @@ fn run() -> Result(Nil, error.Error) {
   let exit = process.new_subject()
 
   use meter <- result.try(
-    shore.Spec(
+    shore.spec(
       init: meter.init,
       update: meter.update,
       view: meter.view,
       keybinds: shore.default_keybinds(),
       exit:,
-      redraw: shore.OnTimer(33),
+      redraw: shore.on_timer(33),
     )
     |> shore.start
     |> result.map_error(error.Actor(_, "meter")),
