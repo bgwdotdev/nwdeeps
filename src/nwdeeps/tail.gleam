@@ -38,7 +38,7 @@ pub fn start(
       file:,
       last_update: 0,
     )
-  fn() { loop(state) } |> process.start(True)
+  process.spawn(fn() { loop(state) })
   Ok(Nil)
 }
 
@@ -46,7 +46,7 @@ fn newest_log(folder: String) -> Result(Log, error.Error) {
   folder
   |> read_logs_folder
   |> result.map(list.sort(_, fn(a, b) { int.compare(b.mtime, a.mtime) }))
-  |> result.then(fn(logs) {
+  |> result.try(fn(logs) {
     case logs {
       [log, ..] -> Ok(log)
       [] -> Error(error.LogDirEmpty(directory: folder))

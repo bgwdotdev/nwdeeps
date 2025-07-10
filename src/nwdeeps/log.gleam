@@ -1,5 +1,4 @@
 import gleam/int
-import gleam/io
 import gleam/option.{type Option, None, Some}
 import gleam/regexp
 import gleam/result
@@ -58,7 +57,7 @@ fn one_of(regexs: List(parse.Parse), line: String) -> Option(Log) {
           case match_to_event(x.event, match) {
             Ok(m) -> Some(m)
             Error(e) -> {
-              io.debug(e)
+              echo e
               one_of([], line)
             }
           }
