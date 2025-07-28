@@ -3,6 +3,7 @@ import gleam/float
 import gleam/int
 import gleam/list
 import gleam/option.{None, Some}
+import gleam/order
 import gleam/result
 import gleam/string
 import gleam/time/duration
@@ -25,6 +26,8 @@ pub opaque type State {
     xp_total: Int,
     cds: Dict(String, Cd),
     last_loading: Timestamp,
+    curve: Bool,
+    curve_filter: String,
   )
 }
 
@@ -58,6 +61,8 @@ pub fn init() -> #(State, List(fn() -> Event)) {
       xp_total: 0,
       cds: dict.new(),
       last_loading: timestamp.system_time(),
+      curve: False,
+      curve_filter: "",
     )
   let cmd = []
   #(state, cmd)
@@ -69,6 +74,8 @@ pub opaque type Event {
   Log(log.Log)
   SetPage(Page)
   LoadLog(String)
+  SetFilter(String)
+  ToggleCurve
 }
 
 pub fn new_log(event: log.Log) -> Event {
@@ -159,6 +166,8 @@ pub fn update(state: State, msg: Event) -> #(State, List(fn() -> Event)) {
         Error(Nil) -> #(state, [])
       }
     }
+    SetFilter(name) -> #(State(..state, curve_filter: name), [])
+    ToggleCurve -> #(State(..state, curve: !state.curve), [])
   }
 }
 
@@ -168,11 +177,9 @@ pub fn view(state: State) -> shore.Node(Event) {
   let time = time(state)
   layout.grid(
     gap: 0,
-    rows: [style.Px(5), style.Fill, style.Fill, style.Px(1)],
+    rows: [style.Px(5), style.Fill, style.Px(3), style.Pct(30), style.Px(1)],
     cols: [style.Pct(66), style.Fill],
     cells: [
-      layout.cell(content: view_page(state), row: #(0, 1), col: #(0, 0)),
-      layout.cell(content: view_graph(state.current), row: #(2, 2), col: #(0, 0)),
       layout.cell(
         content: ui.box(
           [
@@ -189,29 +196,51 @@ pub fn view(state: State) -> shore.Node(Event) {
       ),
       layout.cell(
         content: ui.box([view_cds(state, time)], Some("cooldowns")),
-        row: #(1, 2),
+        row: #(1, 3),
         col: #(1, 1),
       ),
       layout.cell(
         content: ui.bar2(style.Blue, ui.row(view_page_keybinds(state))),
-        row: #(3, 3),
+        row: #(4, 4),
         col: #(0, 1),
       ),
-    ],
+    ]
+      |> list.append(view_page(state), _),
   )
 }
 
-fn view_page(state: State) -> shore.Node(Event) {
+fn view_page(state: State) -> List(layout.Cell(Event)) {
+  let height = case state.curve {
+    True -> #(0, 1)
+    False -> #(0, 3)
+  }
+  let curve = fn(log) {
+    case state.curve {
+      True -> [
+        view_graph_filter(state)
+          |> layout.cell(row: #(2, 2), col: #(0, 0)),
+        view_graph(state, log)
+          |> layout.cell(row: #(3, 3), col: #(0, 0)),
+      ]
+      False -> []
+    }
+  }
   case state.page {
-    ShowDps -> {
+    ShowDps -> [
       view_dps(meters(state.current))
-    }
-    ShowHistory -> {
+        |> layout.cell(row: height, col: #(0, 0)),
+      ..curve(state.current)
+    ]
+    ShowHistory -> [
       ui.box(view_history(state), Some("logs"))
-    }
-    ShowLog(log_name, log) -> {
+      |> layout.cell(row: #(0, 3), col: #(0, 0)),
+    ]
+
+    ShowLog(log_name, log) -> [
       ui.box(view_dps_log(log_name, meters(log)), Some("DPS: " <> log_name))
-    }
+        |> layout.cell(row: height, col: #(0, 0)),
+      ..curve(log)
+    ]
   }
 }
 
@@ -338,11 +367,15 @@ fn view_dps_keybinds() -> List(shore.Node(Event)) {
     ui.button("l: logs", key.Char("l"), SetPage(ShowHistory)),
     ui.button("r: reset xp", key.Char("r"), Log(log.Reset)),
     ui.button("c: reset cd", key.Char("c"), Log(log.ResetCd)),
+    ui.button("d: toggle dps curve", key.Char("d"), ToggleCurve),
   ]
 }
 
 fn view_log_keybinds() -> List(shore.Node(Event)) {
-  [ui.button("l: logs", key.Char("l"), SetPage(ShowHistory))]
+  [
+    ui.button("l: logs", key.Char("l"), SetPage(ShowHistory)),
+    ui.button("d: toggle dps curve", key.Char("d"), ToggleCurve),
+  ]
 }
 
 fn view_history_keybinds() -> List(shore.Node(Event)) {
@@ -412,35 +445,48 @@ type Time {
 
 // DPS GRAPH
 
-fn graph(combat: Combat) -> List(Float) {
-  list.filter_map(combat.logs, fn(log) {
-    case log {
-      log.Damage(source: "Haeli", value:, ..) -> Ok(value |> int.to_float)
-      _ -> Error(Nil)
-    }
-  })
-}
-
 type Sample {
-  Sample(timestamp: Timestamp, dps: List(Float))
+  Sample(time: Timestamp, dps: List(Float), current: List(Int))
 }
 
-fn graph2(combat: Combat) -> List(Float) {
-  let sample = Sample(timestamp.from_unix_seconds(0), [])
+fn graph(combat: Combat, filter: String) -> List(Float) {
+  let sample = Sample(timestamp.from_unix_seconds(0), [], [])
   let sample =
     list.fold(combat.logs, sample, fn(acc, log) {
       case log {
-        log.Damage(source: "Haeli", time:, value:, ..) -> {
-          [value |> int.to_float, ..acc.dps]
-          acc
+        log.Damage(time:, value:, ..) as l if l.source == filter -> {
+          let diff =
+            acc.time
+            |> timestamp.difference(time)
+            |> duration.compare(duration.seconds(6))
+          case diff {
+            order.Gt -> {
+              let total = list.length(acc.current) |> int.to_float
+              let dps =
+                acc.current
+                |> list.map(int.to_float)
+                |> float.sum
+              let avg = dps /. total
+              Sample(time, [avg, ..acc.dps], [value])
+            }
+            _ -> {
+              Sample(acc.time, acc.dps, [value, ..acc.current])
+            }
+          }
         }
         _ -> acc
       }
     })
-  sample.dps
+  sample.dps |> list.reverse
 }
 
-fn view_graph(combat: Combat) -> shore.Node(Event) {
-  let g = combat |> graph |> ui.graph(style.Fill, style.Fill, _)
+fn view_graph(state: State, combat: Combat) -> shore.Node(Event) {
+  let g =
+    combat |> graph(state.curve_filter) |> ui.graph(style.Fill, style.Fill, _)
   ui.box([g], Some("curve"))
+}
+
+fn view_graph_filter(state: State) -> shore.Node(Event) {
+  [ui.input(">", state.curve_filter, style.Fill, SetFilter)]
+  |> ui.box(Some("name"))
 }
